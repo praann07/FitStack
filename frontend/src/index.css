@@ -1,0 +1,233 @@
+@import 'tailwindcss';
+
+/* ---------------------------------------------------------------------------
+   FitStack design tokens
+   A dark, dense, data-first product surface. One accent ("volt"), a strict
+   neutral ramp, and dedicated data colours that stay distinguishable in charts.
+--------------------------------------------------------------------------- */
+@theme {
+  --font-sans:
+    'Segoe UI Variable Display', 'Segoe UI', -apple-system, BlinkMacSystemFont, Inter, Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Neutral ramp — surfaces */
+  --color-canvas: #0a0c10;
+  --color-surface: #101318;
+  --color-surface-2: #161a21;
+  --color-surface-3: #1d222b;
+  --color-line: #242a34;
+  --color-line-strong: #333b48;
+
+  /* Text */
+  --color-ink: #eef1f5;
+  --color-ink-muted: #98a1b0;
+  --color-ink-faint: #6b7482;
+
+  /* Brand — "volt" */
+  --color-volt: #ccf656;
+  --color-volt-dim: #a8cf3d;
+  --color-volt-soft: #1e2612;
+
+  /* Semantic */
+  --color-positive: #4ade80;
+  --color-positive-soft: #0f2a1b;
+  --color-warning: #fbbf24;
+  --color-warning-soft: #2c2210;
+  --color-danger: #f87171;
+  --color-danger-soft: #2e1618;
+  --color-info: #60a5fa;
+  --color-info-soft: #101f33;
+
+  /* Data / macros */
+  --color-protein: #38bdf8;
+  --color-carbs: #fbbf24;
+  --color-fat: #c084fc;
+  --color-volume: #38bdf8;
+
+  --radius-card: 0.875rem;
+
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-pop: 0 16px 40px -12px rgb(0 0 0 / 0.65);
+
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+@layer base {
+  *,
+  ::after,
+  ::before {
+    border-color: var(--color-line);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Numbers should never jitter in tables and counters */
+  table,
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-volt);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background: var(--color-volt);
+    color: var(--color-canvas);
+  }
+
+  /* Inputs shouldn't inherit the OS light styling for autofill */
+  input:-webkit-autofill,
+  input:-webkit-autofill:focus {
+    -webkit-text-fill-color: var(--color-ink);
+    box-shadow: 0 0 0 1000px var(--color-surface-2) inset;
+  }
+
+  input[type='number']::-webkit-outer-spin-button,
+  input[type='number']::-webkit-inner-spin-button {
+    appearance: none;
+    margin: 0;
+  }
+
+  input[type='number'] {
+    -moz-appearance: textfield;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line-strong) transparent;
+  }
+
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  /* Native select arrows are removed for consistent styling — draw our own. */
+  .select-chevron {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%2398a1b0' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.55rem center;
+    background-size: 1.05rem 1.05rem;
+  }
+}
+
+/* Motion — used sparingly: entrances for overlays and value changes only */
+@keyframes fs-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes fs-scale-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes fs-slide-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@keyframes fs-slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes fs-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-fade-in {
+  animation: fs-fade-in 0.16s var(--ease-out-quart);
+}
+.animate-scale-in {
+  animation: fs-scale-in 0.18s var(--ease-out-quart);
+}
+.animate-slide-up {
+  animation: fs-slide-up 0.22s var(--ease-out-quart);
+}
+.animate-slide-in-right {
+  animation: fs-slide-in-right 0.2s var(--ease-out-quart);
+}
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--color-surface-2);
+}
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background-image: linear-gradient(
+    90deg,
+    transparent,
+    rgb(255 255 255 / 0.04),
+    transparent
+  );
+  animation: fs-shimmer 1.6s infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Recharts overrides — keep the grid quiet, kill the default focus ring */
+.recharts-wrapper,
+.recharts-surface {
+  outline: none !important;
+}
+.recharts-cartesian-axis-tick-value {
+  font-size: 11px;
+  fill: var(--color-ink-faint);
+}
+.recharts-default-legend {
+  font-size: 12px;
+}
