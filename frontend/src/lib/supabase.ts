@@ -8,3 +8,10 @@ if (!url || !anonKey) {
 }
 
 export const supabase = createClient(url, anonKey)
+
+/** The current signed-in user's id, for rows that need it explicitly on insert (RLS verifies it, but can't fill it in). */
+export async function currentUserId(): Promise<string> {
+  const { data, error } = await supabase.auth.getUser()
+  if (error || !data.user) throw new Error('Not signed in.')
+  return data.user.id
+}

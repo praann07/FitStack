@@ -1,8 +1,24 @@
-import { request } from './client'
+import { supabase, currentUserId } from '@/lib/supabase'
+import * as derive from './derive'
 import { macrosFromCalories, targetCaloriesFor } from '@/lib/adaptive'
+import { today } from '@/lib/date'
+import {
+  fetchBodyMetrics,
+  fetchDismissedSuggestionIds,
+  fetchFoodLogs,
+  fetchFoods,
+  fetchNutritionTargets,
+  fetchSessions,
+  fetchTdeeEstimates,
+  fetchAllSets,
+  groupSetsBySession,
+  indexById,
+} from './queries'
+import { ApiError } from '@/types'
 import type {
   Food,
   FoodLog,
+  Goal,
   Macros,
   MacroSuggestion,
   MealType,
@@ -32,94 +48,241 @@ export interface CustomFoodPayload {
 export interface RecomputeResult {
   tdee: TdeeEstimate | null
   suggestion: MacroSuggestion | null
-  /** Set when there isn't enough data yet and we fell back to the last target. */
   message: string
 }
 
-/**
- * Nutrition service (Phase 2 — real backend). `userId` parameters are kept
- * for call-site compatibility but unused: identity comes from the token.
- */
+async function currentProfileRates(): Promise<{ goal: Goal; goal_rate_kg_week: number }> {
+  const userId = await currentUserId()
+  const { data, error } = await supabase.from('profiles').select('goal, goal_rate_kg_week').eq('id', userId).single()
+  if (error) throw new ApiError(error.message, 500)
+  return data as { goal: Goal; goal_rate_kg_week: number }
+}
+
+/** Shared by currentSuggestion/recompute/acceptSuggestion, and by dashboardService's summary. */
+export async function computeCurrentSuggestion(): Promise<MacroSuggestion | null> {
+  const [user, targets, metrics, sessions, sets, logs, foods, dismissed] = await Promise.all([
+    currentProfileRates(),
+    fetchNutritionTargets(),
+    fetchBodyMetrics(),
+    fetchSessions(),
+    fetchAllSets(),
+    fetchFoodLogs(),
+    fetchFoods(),
+    fetchDismissedSuggestionIds(),
+  ])
+  const target = derive.currentTargetOn(targets, today())
+  return derive.computeSuggestion(user, target, metrics, sessions, groupSetsBySession(sets), logs, indexById(foods), dismissed)
+}
+
+/** Nutrition service (Supabase replatform Phase 3). `userId` kept for call-site compatibility but unused. */
 export const nutritionService = {
-  /** GET /api/v1/foods?search= */
-  searchFoods(_userId: string, query: string, limit = 40): Promise<Food[]> {
-    return request<Food[]>('GET', '/foods', undefined, { query: { search: query, limit } })
+  async searchFoods(_userId: string, query: string, limit = 40): Promise<Food[]> {
+    let request = supabase.from('foods').select('*')
+    const q = query.trim()
+    if (q) request = request.or(`name.ilike.%${q}%,brand.ilike.%${q}%`)
+    const { data, error } = await request
+    if (error) throw new ApiError(error.message, 500)
+    const foods = (data ?? []) as Food[]
+    foods.sort((a, b) => {
+      if (a.is_custom !== b.is_custom) return a.is_custom ? -1 : 1
+      return a.name.toLowerCase().localeCompare(b.name.toLowerCase())
+    })
+    return foods.slice(0, limit)
   },
 
-  /** Foods the user logs most — the default list before they search. */
-  frequentFoods(_userId: string, limit = 8): Promise<Food[]> {
-    return request<Food[]>('GET', '/foods/frequent', undefined, { query: { limit } })
+  async frequentFoods(_userId: string, limit = 8): Promise<Food[]> {
+    const logs = await fetchFoodLogs()
+    const counts = new Map<string, number>()
+    for (const log of logs) counts.set(log.food_id, (counts.get(log.food_id) ?? 0) + 1)
+    const topIds = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, limit).map(([id]) => id)
+    if (topIds.length === 0) return []
+    const { data, error } = await supabase.from('foods').select('*').in('id', topIds)
+    if (error) throw new ApiError(error.message, 500)
+    const byId = indexById((data ?? []) as Food[])
+    return topIds.map((id) => byId.get(id)).filter((f): f is Food => f !== undefined)
   },
 
-  /** POST /api/v1/foods */
-  createFood(_userId: string, payload: CustomFoodPayload): Promise<Food> {
-    return request<Food>('POST', '/foods', payload)
+  async createFood(_userId: string, payload: CustomFoodPayload): Promise<Food> {
+    const name = payload.name.trim()
+    const { data: clash } = await supabase.from('foods').select('id').ilike('name', name).limit(1)
+    if (clash && clash.length > 0) throw new ApiError('A food with that name already exists.', 409)
+
+    const userId = await currentUserId()
+    const { data, error } = await supabase
+      .from('foods')
+      .insert({ ...payload, name, is_custom: true, created_by: userId })
+      .select()
+      .single()
+    if (error) throw new ApiError(error.message, 500)
+    return data as Food
   },
 
-  /** GET /api/v1/nutrition/logs?date= */
-  getDay(_userId: string, date: string): Promise<NutritionDay> {
-    return request<NutritionDay>('GET', '/nutrition/logs', undefined, { query: { log_date: date } })
+  async getDay(_userId: string, date: string): Promise<NutritionDay> {
+    const [{ data: logs, error: logError }, foods, targets] = await Promise.all([
+      supabase.from('food_logs').select('*').eq('log_date', date),
+      fetchFoods(),
+      fetchNutritionTargets(),
+    ])
+    if (logError) throw new ApiError(logError.message, 500)
+    return derive.buildNutritionDay((logs ?? []) as FoodLog[], indexById(foods), targets, date)
   },
 
-  /** POST /api/v1/nutrition/logs */
-  logFood(_userId: string, payload: LogFoodPayload): Promise<FoodLog> {
-    return request<FoodLog>('POST', '/nutrition/logs', payload)
+  async logFood(_userId: string, payload: LogFoodPayload): Promise<FoodLog> {
+    const { data: visible } = await supabase.from('foods').select('id').eq('id', payload.food_id).limit(1)
+    if (!visible || visible.length === 0) throw new ApiError('That food no longer exists.', 404)
+    if (payload.quantity_g <= 0) throw new ApiError('Quantity must be greater than 0 g.', 422)
+
+    const userId = await currentUserId()
+    const { data, error } = await supabase.from('food_logs').insert({ ...payload, user_id: userId }).select().single()
+    if (error) throw new ApiError(error.message, 500)
+    return data as FoodLog
   },
 
-  /** PATCH /api/v1/nutrition/logs/{id} */
-  updateLog(
+  async updateLog(
     _userId: string,
     logId: string,
     patch: Partial<Pick<FoodLog, 'quantity_g' | 'meal_type'>>,
   ): Promise<FoodLog> {
-    return request<FoodLog>('PATCH', `/nutrition/logs/${logId}`, patch)
+    if (patch.quantity_g !== undefined && patch.quantity_g !== null && patch.quantity_g <= 0) {
+      throw new ApiError('Quantity must be greater than 0 g.', 422)
+    }
+    const { data, error } = await supabase.from('food_logs').update(patch).eq('id', logId).select().single()
+    if (error) throw new ApiError(error.message, 500)
+    return data as FoodLog
   },
 
-  /** DELETE /api/v1/nutrition/logs/{id} */
-  deleteLog(_userId: string, logId: string): Promise<void> {
-    return request<void>('DELETE', `/nutrition/logs/${logId}`)
+  async deleteLog(_userId: string, logId: string): Promise<void> {
+    const { error } = await supabase.from('food_logs').delete().eq('id', logId)
+    if (error) throw new ApiError(error.message, 500)
   },
 
-  /** Copy an entire earlier day into the current one — a real habit for meal preppers. */
-  copyDay(_userId: string, from: string, to: string): Promise<number> {
-    return request<number>('POST', '/nutrition/logs/copy', { from_date: from, to_date: to })
+  async copyDay(_userId: string, from: string, to: string): Promise<number> {
+    const { data: source, error: sourceError } = await supabase.from('food_logs').select('*').eq('log_date', from)
+    if (sourceError) throw new ApiError(sourceError.message, 500)
+    if (!source || source.length === 0) throw new ApiError('That day has nothing logged to copy.', 404)
+
+    const userId = await currentUserId()
+    const rows = source.map((log) => ({
+      user_id: userId,
+      food_id: log.food_id,
+      log_date: to,
+      quantity_g: log.quantity_g,
+      meal_type: log.meal_type,
+    }))
+    const { error } = await supabase.from('food_logs').insert(rows)
+    if (error) throw new ApiError(error.message, 500)
+    return rows.length
   },
 
-  /** GET /api/v1/nutrition/targets/current */
-  currentTarget(_userId: string): Promise<NutritionTarget | null> {
-    return request<NutritionTarget | null>('GET', '/nutrition/targets/current')
+  async currentTarget(_userId: string): Promise<NutritionTarget | null> {
+    const targets = await fetchNutritionTargets()
+    return derive.currentTargetOn(targets, today())
   },
 
   targetHistory(_userId: string): Promise<NutritionTarget[]> {
-    return request<NutritionTarget[]>('GET', '/nutrition/targets')
+    return fetchNutritionTargets()
   },
 
-  /** GET /api/v1/nutrition/tdee-history */
   tdeeHistory(_userId: string): Promise<TdeeEstimate[]> {
-    return request<TdeeEstimate[]>('GET', '/nutrition/tdee-history')
+    return fetchTdeeEstimates()
   },
 
   currentSuggestion(_userId: string): Promise<MacroSuggestion | null> {
-    return request<MacroSuggestion | null>('GET', '/nutrition/targets/suggestion')
+    return computeCurrentSuggestion()
   },
 
-  /** POST /api/v1/nutrition/targets/recompute */
-  recompute(_userId: string): Promise<RecomputeResult> {
-    return request<RecomputeResult>('POST', '/nutrition/targets/recompute')
+  async recompute(_userId: string): Promise<RecomputeResult> {
+    const [metrics, logs, foods] = await Promise.all([fetchBodyMetrics(), fetchFoodLogs(), fetchFoods()])
+    const result = derive.computeTdee(metrics, logs, indexById(foods))
+    if (result === null) {
+      return {
+        tdee: null,
+        suggestion: null,
+        message: 'Not enough data yet. Log weight and food for at least 7 days to get an adaptive estimate.',
+      }
+    }
+
+    const userId = await currentUserId()
+    const todayIso = today()
+    await supabase.from('tdee_estimates').delete().eq('user_id', userId).eq('estimate_date', todayIso)
+    const { data: estimate, error } = await supabase
+      .from('tdee_estimates')
+      .insert({
+        user_id: userId,
+        estimate_date: todayIso,
+        estimated_tdee: result.estimated_tdee,
+        weight_trend_kg: result.weight_trend_kg,
+        confidence: result.confidence,
+      })
+      .select()
+      .single()
+    if (error) throw new ApiError(error.message, 500)
+
+    return {
+      tdee: estimate as TdeeEstimate,
+      suggestion: await computeCurrentSuggestion(),
+      message: `Recalculated from ${result.days_of_data} days of data.`,
+    }
   },
 
-  /** Accepting a suggestion writes a new adaptive nutrition_targets row. */
-  acceptSuggestion(_userId: string, suggestionId: string): Promise<NutritionTarget> {
-    return request<NutritionTarget>('POST', '/nutrition/targets/accept', { suggestion_id: suggestionId })
+  async acceptSuggestion(_userId: string, suggestionId: string): Promise<NutritionTarget> {
+    const suggestion = await computeCurrentSuggestion()
+    if (suggestion === null || suggestion.id !== suggestionId) {
+      throw new ApiError('That suggestion is no longer current.', 409)
+    }
+
+    const userId = await currentUserId()
+    const todayIso = today()
+    await supabase.from('nutrition_targets').delete().eq('user_id', userId).eq('effective_date', todayIso)
+    const { data, error } = await supabase
+      .from('nutrition_targets')
+      .insert({
+        user_id: userId,
+        effective_date: todayIso,
+        calories: suggestion.proposed.calories,
+        protein_g: suggestion.proposed.protein_g,
+        carbs_g: suggestion.proposed.carbs_g,
+        fat_g: suggestion.proposed.fat_g,
+        source: 'adaptive',
+      })
+      .select()
+      .single()
+    if (error) throw new ApiError(error.message, 500)
+    return data as NutritionTarget
   },
 
-  dismissSuggestion(_userId: string, suggestionId: string): Promise<void> {
-    return request<void>('POST', '/nutrition/targets/dismiss', { suggestion_id: suggestionId })
+  async dismissSuggestion(_userId: string, suggestionId: string): Promise<void> {
+    const userId = await currentUserId()
+    const { data: existing } = await supabase
+      .from('dismissed_suggestions')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('suggestion_id', suggestionId)
+      .limit(1)
+    if (existing && existing.length > 0) return
+    const { error } = await supabase.from('dismissed_suggestions').insert({ user_id: userId, suggestion_id: suggestionId })
+    if (error) throw new ApiError(error.message, 500)
   },
 
-  /** Manual override — source = 'manual', which pauses adaptive overwrites. */
-  setManualTarget(_userId: string, macros: Macros): Promise<NutritionTarget> {
-    return request<NutritionTarget>('POST', '/nutrition/targets', macros)
+  async setManualTarget(_userId: string, macros: Macros): Promise<NutritionTarget> {
+    const userId = await currentUserId()
+    const todayIso = today()
+    await supabase.from('nutrition_targets').delete().eq('user_id', userId).eq('effective_date', todayIso)
+    const { data, error } = await supabase
+      .from('nutrition_targets')
+      .insert({
+        user_id: userId,
+        effective_date: todayIso,
+        calories: Math.round(macros.calories),
+        protein_g: Math.round(macros.protein_g),
+        carbs_g: Math.round(macros.carbs_g),
+        fat_g: Math.round(macros.fat_g),
+        source: 'manual',
+      })
+      .select()
+      .single()
+    if (error) throw new ApiError(error.message, 500)
+    return data as NutritionTarget
   },
 
   /** Preview used by the manual-target editor while the user drags calories — pure client-side math. */
