@@ -4,9 +4,11 @@ import type { WorkoutSet, MuscleGroup, Exercise } from '@/types'
 /**
  * Training maths — system design §7.
  *
- * Phase 1 runs these client-side against mock data. In Phase 2 the backend
- * owns them; the shapes returned here are what the API is expected to return,
- * so the UI does not change.
+ * This is the live implementation, consumed by services/derive.ts to compute
+ * PRs, plateaus, and volume against real Supabase data. (Briefly mirrored an
+ * in-progress FastAPI port during the Phase 1/2 mock-frontend era; that
+ * backend has since been replaced by the Supabase replatform, and this file
+ * is the source of truth again.)
  */
 
 /** Epley: 1RM = weight * (1 + reps / 30). Used to compare PRs across rep ranges. */

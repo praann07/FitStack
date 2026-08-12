@@ -3,10 +3,12 @@ import type { Confidence, Goal, Macros } from '@/types'
 /**
  * The adaptive engine — system design §7.
  *
- * Phase 1 mirrors the backend logic client-side so the UI can be evaluated
- * against realistic numbers. Every function here has a one-to-one counterpart
- * planned on the FastAPI side; the frontend only ever consumes the outputs
- * (TDEE estimate, macro suggestion) through the service layer.
+ * This is the live implementation, consumed by services/derive.ts and
+ * services/nutritionService.ts to compute TDEE estimates and macro
+ * suggestions against real Supabase data. (Briefly mirrored an in-progress
+ * FastAPI port during the Phase 1/2 mock-frontend era; that backend has
+ * since been replaced by the Supabase replatform, and this file is the
+ * source of truth again.)
  */
 
 /** kcal per kg of body mass — the standard approximation used for back-calc. */

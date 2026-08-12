@@ -15,7 +15,8 @@ place so trends are visible across both.
   (regression on real weight-trend + intake data, not a fixed formula), and
   macro re-targeting suggestions when your trend drifts from your goal
 - **Progress tracking** — smoothed body-weight trend (EMA, not raw daily
-  noise), measurements, correlated against training volume over time
+  noise), a weight calendar, measurements, correlated against training
+  volume over time
 - **One dashboard** — today's macros, this week's volume, recent PRs, active
   plateaus, and the adaptive suggestion, all in one summary
 
@@ -24,55 +25,38 @@ place so trends are visible across both.
 | Layer | Choice |
 | --- | --- |
 | Frontend | React 19, Vite, TypeScript, Tailwind CSS v4, Recharts, Zustand |
-| Backend | FastAPI, SQLAlchemy 2.0, Alembic |
-| Database | PostgreSQL (Neon) |
-| Auth | JWT access tokens + rotating httpOnly-cookie refresh tokens, bcrypt |
-| Testing | pytest (backend: 77 tests, unit + integration) |
-| Deployment | Render (API) + Vercel (frontend), GitHub Actions CI |
+| Backend | None — the frontend talks to Supabase directly via `supabase-js` |
+| Database | PostgreSQL (Supabase), authorized entirely by Row Level Security |
+| Auth | Supabase Auth, email one-time-code (no passwords) |
+| Deployment | Vercel (frontend only), GitHub Actions CI (lint + build) |
 
-See [`fitstack-system-design.md`](fitstack-system-design.md) for the full
-design doc (schema, business logic, API surface, edge cases).
+See [`fitstack-system-design.md`](fitstack-system-design.md) for the original
+design doc — still accurate for the business logic (§7); superseded for
+architecture/schema/auth/API (see the note at the top of that file).
 
 ## Project layout
 
 ```
-frontend/    React SPA — see frontend/README.md
-backend/     FastAPI API — see backend/README.md
-DEPLOY.md    Step-by-step deploy runbook (Render + Vercel)
+frontend/              React SPA — see frontend/README.md
+  src/lib/              Pure business logic (adaptive TDEE, PR/plateau math)
+  src/services/         Supabase queries + read-model builders (derive.ts)
+supabase/migrations/   Schema, RLS policies, and library seed, applied to the live project
+DEPLOY.md              Deploy runbook (Vercel + Supabase)
 ```
 
 ## Quick start
 
 ```bash
-# Backend
-cd backend
-python -m venv .venv && .venv/Scripts/activate   # .venv/bin/activate on macOS/Linux
-pip install -r requirements.txt
-cp .env.example .env        # fill in DATABASE_URL + JWT_SECRET
-alembic upgrade head
-python seed.py               # exercise + food library
-uvicorn app.main:app --reload
-
-# Frontend (separate terminal)
 cd frontend
 npm install
-cp .env.example .env
+cp .env.example .env   # fill in VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY
 npm run dev
 ```
 
-Open `http://localhost:5173`, register an account, and go.
-
-## Testing
-
-```bash
-cd backend
-pip install -r requirements-dev.txt
-pytest -v
-```
-
-Needs `TEST_DATABASE_URL` pointed at a throwaway Postgres database — see
-[`backend/README.md`](backend/README.md#testing) for setup. CI runs the same
-suite against a disposable container, so it doesn't need that variable.
+Open `http://localhost:5173`, register an account (email one-time code — no
+password), and go. Registering needs a working Supabase Auth email
+configuration; see [`DEPLOY.md`](DEPLOY.md) for the one manual dashboard step
+that requires.
 
 ## Deploying
 
@@ -80,8 +64,8 @@ See [`DEPLOY.md`](DEPLOY.md).
 
 ## Status
 
-Functionally complete and tested: auth, workout logging, adaptive nutrition,
-progress tracking, and the dashboard all work end-to-end against a real
-database, backed by 77 backend tests. Not yet done: frontend test coverage,
-and an actual live deployment (configs are ready in `DEPLOY.md`, but nothing
-is hosted yet).
+Schema, RLS policies, auth, and the full service layer are built and wired to
+a live Supabase project (see `supabase/migrations/` for the schema/RLS, and
+`frontend/src/services/` for the client). Not yet done: a full real
+end-to-end run (register → log a workout → log food → check the dashboard)
+against live Supabase, frontend test coverage, and an actual live deployment.

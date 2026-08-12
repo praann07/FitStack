@@ -1,30 +1,24 @@
 # Deploying FitStack
 
-Backend → Render, frontend → Vercel, database → Neon (already set up). Configs
-are already in the repo (`backend/render.yaml`, `frontend/vercel.json`,
-`.github/workflows/ci.yml`) — this is the order to click through them in.
+Frontend → Vercel, database + auth → Supabase (already provisioned, project
+`mdqcaqksvqkanhgjrlwa`). There's no backend service to deploy — the frontend
+talks to Supabase directly via `supabase-js`, authorized entirely by Row Level
+Security. Just one thing to click through.
 
-## 1. Backend → Render
+## 1. Supabase — one manual step
 
-1. [render.com](https://render.com) → New → Blueprint → connect this repo.
-   Render reads `backend/render.yaml` and proposes a web service.
-2. Before the first deploy, set these in the service's Environment tab
-   (`sync: false` in the blueprint means Render won't guess them for you):
-   - `DATABASE_URL` — your Neon connection string (the same one in
-     `backend/.env`, or a separate prod database if you want to keep dev/prod
-     data apart)
-   - `JWT_SECRET` — a fresh random value, **not** the `changeme` dev secret
-   - `CORS_ORIGINS` — placeholder for now, e.g. `["http://localhost:5173"]`;
-     you'll update this in step 3 once the Vercel URL exists
-   - `COOKIE_SECURE` and `COOKIE_SAMESITE` are already set to `true` /
-     `none` in the blueprint (correct for a cross-domain deploy — leave them)
-3. Deploy. The start command runs `alembic upgrade head` before `uvicorn`, so
-   migrations apply automatically on every deploy.
-4. Once it's live, note the URL (`https://fitstack-api-xxxx.onrender.com`) and
-   confirm `GET /health` returns `{"status": "ok"}`.
-5. Optionally run `python seed.py` once against the prod database (from your
-   machine, with `DATABASE_URL` pointed at prod) to load the exercise/food
-   library.
+Schema, RLS policies, and the exercise/food library are already applied (see
+`supabase/migrations/`). The one thing that has to be done by hand, in the
+Supabase dashboard (no API/CLI covers it):
+
+- **Authentication → Email Templates** — the "Magic Link" template must expose
+  `{{ .Token }}` so `supabase.auth.verifyOtp` has a code to check, not just a
+  clickable link. Confirm email OTP is enabled under Authentication →
+  Providers → Email.
+- Supabase's built-in SMTP is fine for early testing but is rate-limited to a
+  handful of emails/hour and explicitly not for production — set up a real
+  SMTP provider (e.g. Resend) under Authentication → SMTP Settings before
+  real users sign up.
 
 ## 2. Frontend → Vercel
 
@@ -32,37 +26,25 @@ are already in the repo (`backend/render.yaml`, `frontend/vercel.json`,
 2. Set **Root Directory** to `frontend`. Vercel auto-detects Vite; the
    `rewrites` rule in `frontend/vercel.json` handles React Router's
    client-side routes on refresh/deep-link.
-3. Set the environment variable `VITE_API_BASE_URL` to your Render URL plus
-   `/api/v1`, e.g. `https://fitstack-api-xxxx.onrender.com/api/v1`.
-4. Deploy. Note the resulting URL (`https://your-app.vercel.app`).
-
-## 3. Close the loop
-
-Frontend and backend now live on different domains, so:
-
-1. Back in Render's environment settings, set `CORS_ORIGINS` to the real
-   Vercel URL as a JSON array: `["https://your-app.vercel.app"]` (pydantic
-   parses list-typed env vars as JSON — a bare comma-separated string won't
-   work). Redeploy the backend for it to take effect.
-2. `COOKIE_SECURE=true` + `COOKIE_SAMESITE=none` (already set in step 1) are
-   required here — without them, the browser silently drops the refresh
-   cookie on cross-site requests and login/refresh breaks with no obvious
-   error.
+3. Set environment variables (see `frontend/.env.example`):
+   - `VITE_SUPABASE_URL` — `https://mdqcaqksvqkanhgjrlwa.supabase.co`
+   - `VITE_SUPABASE_ANON_KEY` — the publishable key (`mcp__supabase__get_publishable_keys`,
+     or Supabase dashboard → Project Settings → API)
+4. Deploy.
 
 ## Verify
 
-- Visit the Vercel URL, register an account, log a workout and a food entry,
-  check the dashboard populates.
+- Visit the Vercel URL, register an account (email OTP — check the inbox for
+  the code), complete the profile-completion step, log a workout and a food
+  entry, check the dashboard populates.
 - Refresh the page on a non-root route (e.g. `/nutrition`) — should load, not
   404 (confirms the SPA rewrite is working).
-- Wait out an access-token expiry (15 min) and make a request — should
-  silently refresh rather than booting you to `/login` (confirms the
-  cross-site cookie settings are correct).
 
 ## CI
 
-`.github/workflows/ci.yml` runs on every push/PR to `main`: backend tests
-against a disposable `postgres:16` container, frontend lint + typecheck +
-build. Neither job touches Render/Vercel/Neon — deploys happen via each
-platform's own GitHub integration (auto-deploy on push, configured when you
-connect the repo in steps 1–2), not through this workflow.
+`.github/workflows/ci.yml` runs on every push/PR to `main`: frontend lint +
+typecheck + build only. It doesn't touch Supabase or Vercel — Supabase schema
+changes are applied directly via migration (`mcp__supabase__apply_migration`
+or the Supabase CLI), and Vercel deploys happen via its own GitHub
+integration (auto-deploy on push, configured when you connect the repo in
+step 2), not through this workflow.

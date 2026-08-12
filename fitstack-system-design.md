@@ -1,6 +1,15 @@
 # FitStack — Unified Training, Nutrition & Progress Tracker
 ## System Design Document
 
+> **2026-08-13 — partially superseded.** The app has replatformed onto Supabase.
+> §3 (Architecture), §5 (Database Schema), §6 (Auth Flow), and §8 (API Design)
+> describe the original FastAPI + Neon system and no longer match the running
+> app: there is no backend server or REST API now, schema + RLS policies live
+> in `supabase/migrations/`, and auth is Supabase email OTP rather than
+> password + JWT. §7 (Core Business Logic) is still accurate — that logic was
+> ported to `frontend/src/lib/adaptive.ts`/`lib/strength.ts`/`services/derive.ts`
+> unchanged, not rewritten.
+
 ---
 
 ## 1. Problem Statement
