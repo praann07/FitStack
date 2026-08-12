@@ -47,8 +47,8 @@ export interface User {
   goal_rate_kg_week: number
   height_cm: number
   created_at: string
-  /** False right after OTP signup, before the profile-completion step runs. */
-  onboarded: boolean
+  /** Manually flipped by an admin in the Supabase dashboard (pilot-stage access gate). */
+  approved: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -351,12 +351,15 @@ export interface AuthSession {
 }
 
 /**
- * Collected on the post-OTP "complete your profile" screen. Everything
- * needed to seed the first body_metrics row and a Mifflin-St Jeor baseline
- * nutrition_targets row, mirroring what the old /auth/register endpoint did
- * in one request -- now three sequential client writes (see authService).
+ * Collected on the single combined signup form (pilot-stage: password auth,
+ * not OTP). Everything needed to create the auth identity and seed the first
+ * body_metrics row and a Mifflin-St Jeor baseline nutrition_targets row --
+ * four sequential client writes (see authService.signUp). The resulting
+ * account starts unapproved; an admin flips profiles.approved manually.
  */
-export interface OnboardingPayload {
+export interface RegisterPayload {
+  email: string
+  password: string
   full_name: string
   goal: Goal
   goal_rate_kg_week: number

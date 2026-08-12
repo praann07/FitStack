@@ -4,7 +4,7 @@ import { Logo } from '@/components/Logo'
 import { AppShell } from '@/components/layout/AppShell'
 import { LoginPage } from '@/pages/LoginPage'
 import { RegisterPage } from '@/pages/RegisterPage'
-import { OnboardingPage } from '@/pages/OnboardingPage'
+import { PendingApprovalPage } from '@/pages/PendingApprovalPage'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { WorkoutPage } from '@/pages/WorkoutPage'
 import { WorkoutHistoryPage } from '@/pages/WorkoutHistoryPage'
@@ -31,7 +31,7 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
-      <Route path="/onboarding" element={<RequireOnboarding />} />
+      <Route path="/pending-approval" element={<RequirePendingApproval />} />
 
       <Route
         element={
@@ -63,20 +63,20 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   const location = useLocation()
 
   if (status === 'restoring') return <SplashScreen />
-  if (status === 'needs_onboarding') return <Navigate to="/onboarding" replace />
+  if (status === 'pending_approval') return <Navigate to="/pending-approval" replace />
   if (status !== 'authenticated') {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />
   }
   return <>{children}</>
 }
 
-function RequireOnboarding() {
+function RequirePendingApproval() {
   const status = useAuthStore((s) => s.status)
 
   if (status === 'restoring') return <SplashScreen />
   if (status === 'anonymous') return <Navigate to="/login" replace />
   if (status === 'authenticated') return <Navigate to="/dashboard" replace />
-  return <OnboardingPage />
+  return <PendingApprovalPage />
 }
 
 function SplashScreen() {

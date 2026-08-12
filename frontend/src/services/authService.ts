@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import { macrosFromCalories, mifflinStJeor, targetCaloriesFor } from '@/lib/adaptive'
 import { today } from '@/lib/date'
-import type { AuthSession, Goal, OnboardingPayload, User } from '@/types'
+import type { AuthSession, Goal, RegisterPayload, User } from '@/types'
 import { ApiError } from '@/types'
 
 interface ProfileRow {
@@ -10,7 +10,7 @@ interface ProfileRow {
   goal: Goal | null
   goal_rate_kg_week: number | null
   height_cm: number | null
-  onboarded: boolean
+  approved: boolean
   created_at: string
 }
 
@@ -23,7 +23,7 @@ function toUser(email: string, profile: ProfileRow): User {
     goal_rate_kg_week: profile.goal_rate_kg_week ?? 0,
     height_cm: profile.height_cm ?? 0,
     created_at: profile.created_at,
-    onboarded: profile.onboarded,
+    approved: profile.approved,
   }
 }
 
@@ -34,54 +34,30 @@ async function fetchProfile(userId: string): Promise<ProfileRow> {
 }
 
 /**
- * Auth service (Supabase replatform — Phase 2).
- *
- * Identity lives entirely in Supabase Auth (email OTP, no passwords). A
- * `profiles` row is stub-created server-side (see supabase/migrations/0001)
- * the moment `auth.users` gets a new row; `onboarded` stays false until
- * `completeOnboarding` runs, which the app treats as a distinct auth status
- * (see stores/authStore.ts) rather than routing straight to the dashboard.
+ * Auth service (pilot stage: email + password, not OTP -- see
+ * supabase/migrations/0007_approval_gate.sql). A `profiles` row is
+ * stub-created server-side the moment `auth.users` gets a new row;
+ * `approved` stays false until an admin flips it manually in the Supabase
+ * dashboard, which the app treats as a distinct auth status (see
+ * stores/authStore.ts) rather than routing straight to the dashboard. RLS
+ * enforces this on every table besides `profiles` itself, so this is a UX
+ * gate, not the actual security boundary.
  */
 export const authService = {
-  /** Sends (or re-sends) a one-time code to the given email. */
-  async requestOtp(email: string): Promise<void> {
-    const { error } = await supabase.auth.signInWithOtp({ email })
-    if (error) throw new ApiError(error.message, error.status ?? 400)
-  },
-
-  /** Verifies the code from that email and establishes a session. */
-  async verifyOtp(email: string, token: string): Promise<AuthSession> {
-    const { data, error } = await supabase.auth.verifyOtp({ email, token, type: 'email' })
-    if (error) throw new ApiError(error.message, error.status ?? 400)
-    if (!data.user) throw new ApiError('Verification succeeded but no session was returned.', 500)
-    const profile = await fetchProfile(data.user.id)
-    return { user: toUser(data.user.email ?? email, profile) }
-  },
-
-  /** Exchanges a persisted Supabase session for the current user, on app boot. */
-  async restore(): Promise<AuthSession | null> {
-    const { data } = await supabase.auth.getSession()
-    const sessionUser = data.session?.user
-    if (!sessionUser) return null
-    const profile = await fetchProfile(sessionUser.id)
-    return { user: toUser(sessionUser.email ?? '', profile) }
-  },
-
-  async logout(): Promise<void> {
-    await supabase.auth.signOut()
-  },
-
   /**
-   * Post-OTP profile completion for a first-time user: writes the profile
+   * Signs up and completes the profile in one step (no separate onboarding
+   * screen -- there's no OTP gap to bridge anymore): writes the profile
    * fields, seeds today's body_metrics entry, and computes + stores a
-   * Mifflin-St Jeor baseline nutrition_targets row -- the same three writes
-   * the old /auth/register endpoint did in one transaction, run sequentially
-   * client-side. `onboarded` is set last so a failure partway leaves the user
-   * back on the onboarding screen to retry, rather than silently half-set-up.
+   * Mifflin-St Jeor baseline nutrition_targets row, the same three writes
+   * the original /auth/register endpoint did in one transaction.
    */
-  async completeOnboarding(payload: OnboardingPayload): Promise<User> {
-    const { data: authData, error: authError } = await supabase.auth.getUser()
-    if (authError || !authData.user) throw new ApiError('Not signed in.', 401)
+  async signUp(payload: RegisterPayload): Promise<AuthSession> {
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: payload.email,
+      password: payload.password,
+    })
+    if (authError) throw new ApiError(authError.message, authError.status ?? 400)
+    if (!authData.user) throw new ApiError('Sign-up succeeded but no account was returned.', 500)
     const userId = authData.user.id
     const logDate = today()
 
@@ -125,10 +101,30 @@ export const authService = {
       .single()
     if (profileError) throw new ApiError(profileError.message, 500)
 
-    return toUser(authData.user.email ?? '', profile as ProfileRow)
+    return { user: toUser(authData.user.email ?? payload.email, profile as ProfileRow) }
   },
 
-  /** Profile + goal changes from a settings screen (post-onboarding). */
+  async login(email: string, password: string): Promise<AuthSession> {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    if (error) throw new ApiError(error.message, error.status ?? 401)
+    const profile = await fetchProfile(data.user.id)
+    return { user: toUser(data.user.email ?? email, profile) }
+  },
+
+  /** Exchanges a persisted Supabase session for the current user, on app boot. */
+  async restore(): Promise<AuthSession | null> {
+    const { data } = await supabase.auth.getSession()
+    const sessionUser = data.session?.user
+    if (!sessionUser) return null
+    const profile = await fetchProfile(sessionUser.id)
+    return { user: toUser(sessionUser.email ?? '', profile) }
+  },
+
+  async logout(): Promise<void> {
+    await supabase.auth.signOut()
+  },
+
+  /** Profile + goal changes from a settings screen. */
   async updateProfile(
     userId: string,
     patch: Partial<Pick<User, 'full_name' | 'goal' | 'goal_rate_kg_week' | 'height_cm'>>,

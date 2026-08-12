@@ -1,22 +1,21 @@
 import { create } from 'zustand'
 import { authService } from '@/services'
 import { supabase } from '@/lib/supabase'
-import type { OnboardingPayload, User } from '@/types'
+import type { RegisterPayload, User } from '@/types'
 
-type AuthStatus = 'restoring' | 'authenticated' | 'needs_onboarding' | 'anonymous'
+type AuthStatus = 'restoring' | 'authenticated' | 'pending_approval' | 'anonymous'
 
 interface AuthState {
   status: AuthStatus
   user: User | null
   restore: () => Promise<void>
-  requestOtp: (email: string) => Promise<void>
-  verifyOtp: (email: string, code: string) => Promise<void>
-  completeOnboarding: (payload: OnboardingPayload) => Promise<void>
+  register: (payload: RegisterPayload) => Promise<void>
+  login: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
 }
 
 function statusFor(user: User): AuthStatus {
-  return user.onboarded ? 'authenticated' : 'needs_onboarding'
+  return user.approved ? 'authenticated' : 'pending_approval'
 }
 
 export const useAuthStore = create<AuthState>((set) => {
@@ -39,18 +38,14 @@ export const useAuthStore = create<AuthState>((set) => {
       }
     },
 
-    async requestOtp(email) {
-      await authService.requestOtp(email)
-    },
-
-    async verifyOtp(email, code) {
-      const session = await authService.verifyOtp(email, code)
+    async register(payload) {
+      const session = await authService.signUp(payload)
       set({ status: statusFor(session.user), user: session.user })
     },
 
-    async completeOnboarding(payload) {
-      const user = await authService.completeOnboarding(payload)
-      set({ status: statusFor(user), user })
+    async login(email, password) {
+      const session = await authService.login(email, password)
+      set({ status: statusFor(session.user), user: session.user })
     },
 
     async logout() {
