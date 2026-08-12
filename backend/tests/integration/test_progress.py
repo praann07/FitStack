@@ -59,3 +59,19 @@ def test_trend_endpoint_shape_for_a_fresh_user(client):
     assert len(body["points"]) == 30
     assert body["points"][-1]["weight_kg"] == 80
     assert "weekly_volume" in body
+
+
+def test_trend_endpoint_end_date_shifts_the_window(client):
+    token, _ = register_user(client, weight_kg=80)
+    end_date = date.today() - timedelta(days=7)
+
+    res = client.get(
+        "/api/v1/progress/trend", params={"days": 10, "end_date": end_date.isoformat()}, headers=auth_headers(token)
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert len(body["points"]) == 10
+    assert body["points"][-1]["date"] == end_date.isoformat()
+    assert body["points"][0]["date"] == (end_date - timedelta(days=9)).isoformat()
+    # weight was only logged today (registration seed), which falls outside this window.
+    assert all(p["weight_kg"] is None for p in body["points"])

@@ -7,27 +7,30 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { EmptyState, Skeleton } from '@/components/ui/EmptyState'
 import { Field, Input, NumberField } from '@/components/ui/Field'
 import { TrendChart } from '@/components/charts/TrendChart'
+import { WeightCalendar } from '@/components/progress/WeightCalendar'
 import { useAsync, useAction } from '@/hooks/useAsync'
 import { useAuthStore } from '@/stores/authStore'
 import { useToastStore } from '@/stores/toastStore'
 import { progressService } from '@/services'
 import { friendlyDate, today } from '@/lib/date'
 import { cm, kg, signed } from '@/lib/format'
-import type { BodyMetric, ProgressTrend } from '@/types'
+import type { BodyMetric, Goal, ProgressTrend } from '@/types'
 
 export function ProgressPage() {
   const user = useAuthStore((s) => s.user)
   const push = useToastStore((s) => s.push)
   if (!user) return null
 
-  return <ProgressView userId={user.id} onToast={push} />
+  return <ProgressView userId={user.id} goal={user.goal} onToast={push} />
 }
 
 function ProgressView({
   userId,
+  goal,
   onToast,
 }: {
   userId: string
+  goal: Goal
   onToast: (msg: string, kind?: 'success' | 'error' | 'info') => void
 }) {
   const metrics = useAsync(() => progressService.listMetrics(userId), [userId])
@@ -71,6 +74,15 @@ function ProgressView({
           </CardBody>
         </Card>
       </div>
+
+      <WeightCalendar
+        userId={userId}
+        goal={goal}
+        onChanged={() => {
+          metrics.reload()
+          trend.reload()
+        }}
+      />
 
       <Card>
         <CardHeader

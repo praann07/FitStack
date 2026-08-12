@@ -441,8 +441,8 @@ def weekly_rate(
     return round(((series[-1][1] - series[0][1]) / span_days) * 7, 3)
 
 
-def build_trend(db: Session, user_id: uuid.UUID, days: int) -> dict:
-    end = date_type.today()
+def build_trend(db: Session, user_id: uuid.UUID, days: int, end_date: date_type | None = None) -> dict:
+    end = end_date or date_type.today()
     start = shift_date(end, -(days - 1))
     dates = date_range(start, end)
 
@@ -476,7 +476,7 @@ def build_trend(db: Session, user_id: uuid.UUID, days: int) -> dict:
     first = known[0]["trend_kg"] if known else None
     last = known[-1]["trend_kg"] if known else None
 
-    rate = weekly_rate(db, user_id, 21)
+    rate = weekly_rate(db, user_id, 21, end)
 
     weekly_volume = [
         {"week_start": w["week_start"], "volume_kg": w["total_volume_kg"]}

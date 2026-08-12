@@ -79,7 +79,8 @@ def delete_metric(
 @router.get("/trend", response_model=ProgressTrendOut)
 def get_trend(
     days: int = 90,
+    end_date: date | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return derive.build_trend(db, current_user.id, days)
+    return derive.build_trend(db, current_user.id, days, end_date)

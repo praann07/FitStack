@@ -32,7 +32,9 @@ export const progressService = {
   },
 
   /** GET /api/v1/progress/trend — smoothed weight + training-volume overlay. */
-  getTrend(_userId: string, days = 90): Promise<ProgressTrend> {
-    return request<ProgressTrend>('GET', '/progress/trend', undefined, { query: { days } })
+  getTrend(_userId: string, days = 90, endDate?: string): Promise<ProgressTrend> {
+    return request<ProgressTrend>('GET', '/progress/trend', undefined, {
+      query: { days, end_date: endDate },
+    })
   },
 }
