@@ -1,10 +1,11 @@
 from datetime import date, datetime, timezone
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db
 from app.core.config import get_settings
+from app.core.limiter import limiter
 from app.core.security import (
     create_access_token,
     generate_refresh_token,
@@ -40,7 +41,7 @@ def _issue_tokens(response: Response, db: Session, user: User) -> TokenResponse:
         value=raw_refresh,
         httponly=True,
         secure=settings.cookie_secure,
-        samesite="lax",
+        samesite=settings.cookie_samesite,
         max_age=int((expires_at - datetime.now(timezone.utc)).total_seconds()),
     )
 
@@ -51,7 +52,8 @@ def _issue_tokens(response: Response, db: Session, user: User) -> TokenResponse:
 
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-def register(payload: RegisterRequest, response: Response, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def register(request: Request, payload: RegisterRequest, response: Response, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == payload.email).first() is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
 
@@ -103,7 +105,8 @@ def register(payload: RegisterRequest, response: Response, db: Session = Depends
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(payload: LoginRequest, response: Response, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def login(request: Request, payload: LoginRequest, response: Response, db: Session = Depends(get_db)):
     invalid_credentials = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password"
     )
@@ -116,7 +119,9 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
 
 
 @router.post("/refresh", response_model=TokenResponse)
+@limiter.limit("5/minute")
 def refresh(
+    request: Request,
     response: Response,
     db: Session = Depends(get_db),
     refresh_token: str | None = Cookie(default=None, alias=REFRESH_COOKIE_NAME),

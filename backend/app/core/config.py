@@ -13,9 +13,13 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 7
     cors_origins: list[str] = ["http://localhost:5173"]
     # Local dev is plain HTTP, so the refresh cookie must not be Secure-only or
-    # browsers silently drop it. Flip to true (with samesite="none") once the
-    # frontend and backend are deployed on real HTTPS domains.
+    # browsers silently drop it. Flip to true (with cookie_samesite="none") once
+    # the frontend and backend are deployed on real HTTPS domains.
     cookie_secure: bool = False
+    # "lax" works for same-site local dev. Cross-site deploys (frontend and
+    # backend on different domains) need "none" — browsers drop a Lax cookie on
+    # cross-site fetch(), which silently breaks refresh/login in production.
+    cookie_samesite: str = "lax"
 
 
 @lru_cache

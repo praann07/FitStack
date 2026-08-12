@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: fitstack-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      # Values below are placeholders -- set the real ones in the Render dashboard.
+      # Nothing secret is committed here.
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false # JSON array, e.g. ["https://your-app.vercel.app"]
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: COOKIE_SAMESITE
+        value: "none" # frontend and backend are on different domains
