@@ -47,6 +47,8 @@ export interface User {
   goal_rate_kg_week: number
   height_cm: number
   created_at: string
+  /** False right after OTP signup, before the profile-completion step runs. */
+  onboarded: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -345,18 +347,20 @@ export interface DashboardSummary {
 // ---------------------------------------------------------------------------
 
 export interface AuthSession {
-  access_token: string
   user: User
 }
 
-export interface RegisterPayload {
-  email: string
-  password: string
+/**
+ * Collected on the post-OTP "complete your profile" screen. Everything
+ * needed to seed the first body_metrics row and a Mifflin-St Jeor baseline
+ * nutrition_targets row, mirroring what the old /auth/register endpoint did
+ * in one request -- now three sequential client writes (see authService).
+ */
+export interface OnboardingPayload {
   full_name: string
   goal: Goal
   goal_rate_kg_week: number
   height_cm: number
-  /** First body-metric entry, so the new account has a starting point. */
   weight_kg: number
   age: number
   sex: 'male' | 'female'

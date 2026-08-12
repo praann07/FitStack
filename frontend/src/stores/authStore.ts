@@ -1,23 +1,30 @@
 import { create } from 'zustand'
 import { authService } from '@/services'
-import { setSessionExpiredHandler } from '@/services/client'
-import type { RegisterPayload, User } from '@/types'
+import { supabase } from '@/lib/supabase'
+import type { OnboardingPayload, User } from '@/types'
 
-type AuthStatus = 'restoring' | 'authenticated' | 'anonymous'
+type AuthStatus = 'restoring' | 'authenticated' | 'needs_onboarding' | 'anonymous'
 
 interface AuthState {
   status: AuthStatus
   user: User | null
   restore: () => Promise<void>
-  login: (email: string, password: string) => Promise<void>
-  register: (payload: RegisterPayload) => Promise<void>
+  requestOtp: (email: string) => Promise<void>
+  verifyOtp: (email: string, code: string) => Promise<void>
+  completeOnboarding: (payload: OnboardingPayload) => Promise<void>
   logout: () => Promise<void>
 }
 
+function statusFor(user: User): AuthStatus {
+  return user.onboarded ? 'authenticated' : 'needs_onboarding'
+}
+
 export const useAuthStore = create<AuthState>((set) => {
-  // A request whose silent refresh-and-retry also failed means the refresh
-  // cookie is gone or expired — drop back to the login screen.
-  setSessionExpiredHandler(() => set({ status: 'anonymous', user: null }))
+  // Keeps the store in sync with token refresh / cross-tab sign-out, which
+  // supabase-js handles on its own once a session exists.
+  supabase.auth.onAuthStateChange((event) => {
+    if (event === 'SIGNED_OUT') set({ status: 'anonymous', user: null })
+  })
 
   return {
     status: 'restoring',
@@ -26,20 +33,24 @@ export const useAuthStore = create<AuthState>((set) => {
     async restore() {
       try {
         const session = await authService.restore()
-        set(session ? { status: 'authenticated', user: session.user } : { status: 'anonymous', user: null })
+        set(session ? { status: statusFor(session.user), user: session.user } : { status: 'anonymous', user: null })
       } catch {
         set({ status: 'anonymous', user: null })
       }
     },
 
-    async login(email, password) {
-      const session = await authService.login(email, password)
-      set({ status: 'authenticated', user: session.user })
+    async requestOtp(email) {
+      await authService.requestOtp(email)
     },
 
-    async register(payload) {
-      const session = await authService.register(payload)
-      set({ status: 'authenticated', user: session.user })
+    async verifyOtp(email, code) {
+      const session = await authService.verifyOtp(email, code)
+      set({ status: statusFor(session.user), user: session.user })
+    },
+
+    async completeOnboarding(payload) {
+      const user = await authService.completeOnboarding(payload)
+      set({ status: statusFor(user), user })
     },
 
     async logout() {
