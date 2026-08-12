@@ -15,7 +15,6 @@ import {
 import { Logo } from '@/components/Logo'
 import { Button } from '@/components/ui/Button'
 import { Toaster } from '@/components/ui/Toaster'
-import { DevControls } from '@/components/layout/DevControls'
 import { useAuthStore } from '@/stores/authStore'
 import { useWorkoutStore } from '@/stores/workoutStore'
 import { cn } from '@/lib/cn'
@@ -58,8 +57,7 @@ export function AppShell() {
         </div>
         <nav className="flex-1 overflow-y-auto px-3 py-4 scrollbar-thin">{nav}</nav>
         <div className="border-t border-line p-3">
-          <DevControls />
-          <div className="mt-1 flex items-center gap-2.5 px-2 py-2">
+          <div className="flex items-center gap-2.5 px-2 py-2">
             <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-volt-soft text-[12px] font-bold text-volt">
               {initials(user.full_name)}
             </span>

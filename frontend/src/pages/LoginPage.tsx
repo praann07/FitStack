@@ -1,13 +1,11 @@
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { Sparkles } from 'lucide-react'
 import { AuthLayout } from '@/components/layout/AuthLayout'
 import { Button } from '@/components/ui/Button'
 import { Field, Input } from '@/components/ui/Field'
 import { useAuthStore } from '@/stores/authStore'
 import { email as emailRule } from '@/lib/validate'
 import { errorMessage } from '@/hooks/useAsync'
-import { DEMO_EMAIL, DEMO_PASSWORD } from '@/mock/seed'
 import type { ApiError } from '@/types'
 
 export function LoginPage() {
@@ -46,13 +44,6 @@ export function LoginPage() {
     } finally {
       setLoading(false)
     }
-  }
-
-  function fillDemo() {
-    setEmail(DEMO_EMAIL)
-    setPassword(DEMO_PASSWORD)
-    setFieldErrors({})
-    setFormError(null)
   }
 
   return (
@@ -108,20 +99,6 @@ export function LoginPage() {
             Log in
           </Button>
         </form>
-
-        <div className="my-5 flex items-center gap-3">
-          <span className="h-px flex-1 bg-line" />
-          <span className="text-[11px] font-medium uppercase tracking-wide text-ink-faint">or</span>
-          <span className="h-px flex-1 bg-line" />
-        </div>
-
-        <Button variant="outline" size="md" block onClick={fillDemo}>
-          <Sparkles className="size-4 text-volt" /> Explore the demo account
-        </Button>
-        <p className="mt-2.5 text-center text-[11.5px] leading-snug text-ink-faint">
-          One tap fills 16 weeks of workout, nutrition and weight history so you can see every
-          screen populated.
-        </p>
       </div>
     </AuthLayout>
   )

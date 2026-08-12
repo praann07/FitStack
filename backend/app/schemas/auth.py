@@ -42,3 +42,10 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserOut
+
+
+class UpdateProfileRequest(BaseModel):
+    full_name: str | None = None
+    goal: Literal["bulk", "cut", "maintain"] | None = None
+    goal_rate_kg_week: float | None = None
+    height_cm: float | None = None

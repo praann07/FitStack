@@ -4,6 +4,7 @@ from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db
+from app.core.config import get_settings
 from app.core.security import (
     create_access_token,
     generate_refresh_token,
@@ -11,15 +12,16 @@ from app.core.security import (
     hash_refresh_token,
     verify_password,
 )
-from app.models.nutrition import NutritionTarget
+from app.models.nutrition import DismissedSuggestion, NutritionTarget, TdeeEstimate
 from app.models.progress import BodyMetric
 from app.models.user import RefreshToken, User
-from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, UserOut
+from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, UpdateProfileRequest, UserOut
 from app.services.adaptive import macros_from_calories, mifflin_st_jeor, target_calories_for
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 REFRESH_COOKIE_NAME = "refresh_token"
+settings = get_settings()
 
 
 def _issue_tokens(response: Response, db: Session, user: User) -> TokenResponse:
@@ -37,7 +39,7 @@ def _issue_tokens(response: Response, db: Session, user: User) -> TokenResponse:
         key=REFRESH_COOKIE_NAME,
         value=raw_refresh,
         httponly=True,
-        secure=True,
+        secure=settings.cookie_secure,
         samesite="lax",
         max_age=int((expires_at - datetime.now(timezone.utc)).total_seconds()),
     )
@@ -163,4 +165,28 @@ def logout(
 
 @router.get("/me", response_model=UserOut)
 def me(current_user: User = Depends(get_current_user)):
+    return current_user
+
+
+@router.patch("/me", response_model=UserOut)
+def update_me(
+    payload: UpdateProfileRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    updates = payload.model_dump(exclude_unset=True)
+    goal_changed = "goal" in updates and updates["goal"] != current_user.goal
+    for field, value in updates.items():
+        setattr(current_user, field, value)
+
+    if goal_changed:
+        # Switching goal resets the adaptive window rather than blending
+        # old- and new-goal data (system design §10).
+        db.query(TdeeEstimate).filter(TdeeEstimate.user_id == current_user.id).delete()
+        db.query(DismissedSuggestion).filter(
+            DismissedSuggestion.user_id == current_user.id
+        ).delete()
+
+    db.commit()
+    db.refresh(current_user)
     return current_user
