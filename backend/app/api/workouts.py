@@ -232,7 +232,14 @@ def delete_set(
     current_user: User = Depends(get_current_user),
 ):
     _owned_session(db, session_id, current_user.id)
-    target = db.query(WorkoutSet).filter(WorkoutSet.id == set_id).first()
+    # Scope by session_id too: _owned_session only proves the caller owns *this*
+    # session, not that the set belongs to it. Without this filter a caller can
+    # pass their own session id and another user's set id to delete their data.
+    target = (
+        db.query(WorkoutSet)
+        .filter(WorkoutSet.id == set_id, WorkoutSet.session_id == session_id)
+        .first()
+    )
     if target is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Set not found.")
 

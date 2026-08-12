@@ -110,7 +110,9 @@ def log_food(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if db.get(Food, payload.food_id) is None:
+    # Visibility, not just existence — a bare db.get() would let a caller log
+    # (and thereby read back the name and macros of) another user's custom food.
+    if _visible_foods(db, current_user.id).filter(Food.id == payload.food_id).first() is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="That food no longer exists.")
     if payload.quantity_g <= 0:
         raise HTTPException(

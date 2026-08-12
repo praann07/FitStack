@@ -1,5 +1,8 @@
-from fastapi import FastAPI
+import logging
+
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
@@ -37,6 +40,32 @@ app.include_router(volume_router, prefix="/api/v1")
 app.include_router(nutrition_router, prefix="/api/v1")
 app.include_router(progress_router, prefix="/api/v1")
 app.include_router(dashboard_router, prefix="/api/v1")
+
+logger = logging.getLogger("fitstack")
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    if settings.cookie_secure:  # only meaningful once we're actually on HTTPS
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Anything that reaches here is a bug. Log it with the traceback for Sentry
+    or the log drain, but return a generic body -- FastAPI's default surfaces
+    internals (a ResponseValidationError, for instance, echoes the field that
+    failed) which is noise to the user and detail to an attacker."""
+    logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": "Something went wrong on our end. Please try again."},
+    )
 
 
 @app.get("/health")

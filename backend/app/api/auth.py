@@ -25,6 +25,14 @@ REFRESH_COOKIE_NAME = "refresh_token"
 settings = get_settings()
 
 
+def _normalise_email(email: str) -> str:
+    """Addresses are case-insensitive in practice. Storing them verbatim let
+    'Bob@x.com' and 'bob@x.com' become two accounts, and locked a user out of
+    their own by typing a different case. The existing unique constraint on
+    users.email enforces this once every write goes through here."""
+    return email.strip().lower()
+
+
 def _issue_tokens(response: Response, db: Session, user: User) -> TokenResponse:
     raw_refresh, token_hash, expires_at = generate_refresh_token()
     db.add(
@@ -54,11 +62,12 @@ def _issue_tokens(response: Response, db: Session, user: User) -> TokenResponse:
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 @limiter.limit("5/minute")
 def register(request: Request, payload: RegisterRequest, response: Response, db: Session = Depends(get_db)):
-    if db.query(User).filter(User.email == payload.email).first() is not None:
+    email = _normalise_email(payload.email)
+    if db.query(User).filter(User.email == email).first() is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
 
     user = User(
-        email=payload.email,
+        email=email,
         password_hash=hash_password(payload.password),
         full_name=payload.full_name,
         goal=payload.goal,
@@ -111,7 +120,7 @@ def login(request: Request, payload: LoginRequest, response: Response, db: Sessi
         status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password"
     )
 
-    user = db.query(User).filter(User.email == payload.email).first()
+    user = db.query(User).filter(User.email == _normalise_email(payload.email)).first()
     if user is None or not verify_password(payload.password, user.password_hash):
         raise invalid_credentials
 

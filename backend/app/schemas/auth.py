@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, model_validator
 
 
 class RegisterRequest(BaseModel):
@@ -49,3 +49,17 @@ class UpdateProfileRequest(BaseModel):
     goal: Literal["bulk", "cut", "maintain"] | None = None
     goal_rate_kg_week: float | None = None
     height_cm: float | None = None
+
+    # None means "not supplied" for every field here, because the handler applies
+    # updates with exclude_unset=True. Sending an explicit null for a column the
+    # app treats as required used to be accepted and then blow up later --
+    # goal violates a NOT NULL constraint, and a null goal_rate_kg_week makes
+    # both abs() in the adaptive engine and the dashboard response model fail.
+    _REQUIRED = ("goal", "goal_rate_kg_week")
+
+    @model_validator(mode="after")
+    def _reject_explicit_nulls(self):
+        for field in self._REQUIRED:
+            if field in self.model_fields_set and getattr(self, field) is None:
+                raise ValueError(f"{field} cannot be null")
+        return self
