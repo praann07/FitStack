@@ -8,3 +8,6 @@
 # OS
 .DS_Store
 Thumbs.db
+
+# Supabase temp
+supabase/.temp/
