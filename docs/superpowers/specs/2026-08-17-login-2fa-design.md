@@ -1,7 +1,12 @@
 # Email OTP as a real second factor
 
 **Date:** 2026-08-17
-**Status:** Approved, not yet implemented
+**Status:** Approved, **not implemented — paused 2026-08-17.** Blocked on Resend
+domain verification for `weighsfit.in`, whose KYC one-time code is delivered to
+a phone the user cannot reach. No code, migrations, or Supabase settings were
+changed; the app still runs password signup with the manual `profiles.approved`
+gate. Resume by clearing the domain KYC, then execute
+`docs/superpowers/plans/2026-08-17-login-2fa.md` from Task 1.
 
 ## Problem
 
