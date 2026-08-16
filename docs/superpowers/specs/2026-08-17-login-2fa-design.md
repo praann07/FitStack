@@ -175,7 +175,8 @@ their own database access.
 3. Generate a cryptographically random 6-digit code.
 4. Upsert the challenge row keyed on `session_id`, storing the bcrypt hash and
    `expires_at = now() + 10 minutes`, resetting `attempts` to 0.
-5. POST to the Resend API to send the code. If Resend returns an error, delete
+5. Send the code with the `npm:resend` SDK from `Weighsfit <otp@weighsfit.in>`.
+   If Resend returns an error, delete
    the challenge row and return 502 so the client can offer a retry rather than
    leaving the user stuck with a code that was never delivered.
 
@@ -255,21 +256,52 @@ attempts" beyond what the UI needs, to avoid handing an attacker a probe.
   because the approval deadlock was found by running a signup, not by reading
   policies — the same discipline applies here.
 
-## Configuration inputs required before implementation
+## Configuration and setup
 
-These are supplied by the user, not decided by this design:
+**Sending domain: `weighsfit.in`**, sender `Weighsfit <otp@weighsfit.in>`. This
+is FitStack's own domain, distinct from `coastnow.in` used by the separate Coast
+project, and needs its own DKIM/SPF verification in Resend.
 
-1. Verified sending domain in Resend, and the `from:` address to use.
-2. Resend API key, set as a Supabase Edge Function secret (never in
-   `frontend/.env`, which ships to the browser).
+Supplied by the user, not decided by this design:
+
+1. `weighsfit.in` verified in Resend (DNS records added, domain showing
+   verified).
+2. A Resend API key, set as an Edge Function secret:
+   `supabase secrets set RESEND_API_KEY=re_xxxxx`. Never in `frontend/.env` —
+   anything Vite reads there ships to the browser.
 3. Supabase dashboard: Auth -> disable "Confirm email", since verification is
    handled by this flow rather than Supabase's own confirmation email.
 
+**The repo has no `supabase/config.toml`** — only a `supabase/migrations/`
+directory, applied to the remote project by hand. `supabase functions deploy`
+requires a linked project, so implementation must first run `supabase init` and
+`supabase link --project-ref mdqcaqksvqkanhgjrlwa`. `supabase init` must not
+clobber the existing `migrations/` directory.
+
 No Supabase custom SMTP configuration and no auth email template editing is
-needed — the Edge Function calls the Resend API directly.
+needed — the Edge Functions call the Resend API directly. (SMTP config would be
+required for Supabase's *own* OTP flow, `signInWithOtp`, which this design does
+not use: that flow is passwordless and so cannot express "password, then code".)
 
 Resend's free tier allows 100 emails/day and 3,000/month, which covers a
 10-15 person pilot.
+
+### Hardening relative to the common reference implementation
+
+The widely-circulated Edge-Function-plus-Resend snippet differs from this design
+in four ways, each of which is exploitable. Recording them so they are not
+reintroduced by someone copying that snippet later:
+
+| Common snippet | Why it fails | This design |
+| --- | --- | --- |
+| `Math.random()` for the code | Not cryptographically secure; output is predictable from previous values | `crypto.getRandomValues()` |
+| `code text` stored plaintext | Any read of the table — leaked service key, loose policy, dashboard access — exposes every live code | bcrypt hash via `pgcrypto` |
+| `email text primary key` | Not bound to a login attempt: a code can be requested for an address without the password, and redeemed by any session | keyed on `session_id` |
+| no attempt counter | 10^6 codes brute-force in seconds under unlimited guesses | dead after 5 attempts |
+
+The same snippet also omits `enable row level security` on the code table. With
+the table in `public` and plaintext codes, that serves live codes over the Data
+API to anyone. This design encloses the table to the service role entirely.
 
 ## Risks and accepted tradeoffs
 
