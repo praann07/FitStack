@@ -5,14 +5,15 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
 import { Card, CardBody } from '@/components/ui/Card'
 import { EmptyState, Skeleton } from '@/components/ui/EmptyState'
-import { Field, Input, NumberField } from '@/components/ui/Field'
+import { Field, Input, NumberField, Select } from '@/components/ui/Field'
 import { ExercisePicker } from '@/components/exercises/ExercisePicker'
 import { useAsync, useAction } from '@/hooks/useAsync'
 import { useAuthStore } from '@/stores/authStore'
 import { useToastStore } from '@/stores/toastStore'
 import { workoutService } from '@/services'
-import { MUSCLE_COLOR, MUSCLE_LABEL } from '@/lib/format'
-import type { Exercise } from '@/types'
+import { MUSCLE_COLOR, MUSCLE_LABEL, STYLE_LABEL } from '@/lib/format'
+import { TRAINING_STYLES } from '@/types'
+import type { Exercise, TrainingStyle } from '@/types'
 import type { RoutineInput } from '@/services'
 
 interface Row {
@@ -42,6 +43,7 @@ function EditorView({ userId, routineId }: { userId: string; routineId: string |
   )
 
   const [name, setName] = useState('')
+  const [style, setStyle] = useState<TrainingStyle | ''>('')
   const [notes, setNotes] = useState('')
   const [rows, setRows] = useState<Row[]>([])
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -55,6 +57,7 @@ function EditorView({ userId, routineId }: { userId: string; routineId: string |
     }
     if (routine.data && !loaded) {
       setName(routine.data.name)
+      setStyle(routine.data.style ?? '')
       setNotes(routine.data.notes ?? '')
       setRows(
         routine.data.exercises.map((re) => ({
@@ -123,6 +126,7 @@ function EditorView({ userId, routineId }: { userId: string; routineId: string |
 
     const input: RoutineInput = {
       name: name.trim(),
+      style: style === '' ? null : style,
       notes: notes.trim() === '' ? null : notes.trim(),
       exercises: rows.map((r) => ({
         exercise_id: r.exercise.id,
@@ -165,7 +169,7 @@ function EditorView({ userId, routineId }: { userId: string; routineId: string |
 
       <Card>
         <CardBody className="flex flex-col gap-4">
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <Field label="Name" error={errors.name}>
               <Input
                 value={name}
@@ -173,6 +177,16 @@ function EditorView({ userId, routineId }: { userId: string; routineId: string |
                 placeholder="e.g. Upper power"
                 aria-invalid={!!errors.name}
               />
+            </Field>
+            <Field label="Style" hint="Used to group your progression charts.">
+              <Select value={style} onChange={(e) => setStyle(e.target.value as TrainingStyle | '')}>
+                <option value="">No style</option>
+                {TRAINING_STYLES.map((s) => (
+                  <option key={s} value={s}>
+                    {STYLE_LABEL[s]}
+                  </option>
+                ))}
+              </Select>
             </Field>
             <Field label="Notes (optional)" hint="Told to members, coaches or future you.">
               <Input

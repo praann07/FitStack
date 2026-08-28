@@ -22,7 +22,7 @@ import { useToastStore } from '@/stores/toastStore'
 import { useWorkoutStore } from '@/stores/workoutStore'
 import { workoutService } from '@/services'
 import { relativeDays } from '@/lib/date'
-import { MUSCLE_COLOR, MUSCLE_LABEL } from '@/lib/format'
+import { MUSCLE_COLOR, MUSCLE_LABEL, STYLE_LABEL } from '@/lib/format'
 import type { RoutineDetail } from '@/types'
 
 export function RoutinesPage() {
@@ -123,7 +123,14 @@ function RoutinesView({ userId }: { userId: string }) {
                   className="flex items-start justify-between gap-3 text-left"
                 >
                   <div className="min-w-0">
-                    <h3 className="truncate text-[15px] font-semibold text-ink">{routine.name}</h3>
+                    <h3 className="truncate text-[15px] font-semibold text-ink">
+                      {routine.name}
+                      {routine.style && (
+                        <span className="ml-2 rounded-full bg-surface-2 px-2 py-0.5 align-middle text-[10.5px] font-medium uppercase tracking-wide text-ink-muted">
+                          {STYLE_LABEL[routine.style]}
+                        </span>
+                      )}
+                    </h3>
                     <p className="mt-0.5 text-[12.5px] text-ink-muted">
                       {routine.exercises.length} exercise{routine.exercises.length === 1 ? '' : 's'} ·{' '}
                       {totalSets} sets · updated {relativeDays(routine.updated_at.slice(0, 10))}

@@ -1,4 +1,4 @@
-import type { Goal, MuscleGroup, SetType, MealType, Confidence, Equipment } from '@/types'
+import type { Goal, MuscleGroup, SetType, MealType, Confidence, Equipment, TrainingStyle } from '@/types'
 
 export function kg(value: number | null | undefined, digits = 1): string {
   if (value === null || value === undefined || Number.isNaN(value)) return '—'
@@ -101,6 +101,17 @@ export const SET_TYPE_SHORT: Record<SetType, string> = {
   normal: '',
   drop: 'D',
   failure: 'F',
+}
+
+export const STYLE_LABEL: Record<TrainingStyle, string> = {
+  push: 'Push',
+  pull: 'Pull',
+  legs: 'Legs',
+  upper: 'Upper',
+  lower: 'Lower',
+  'full-body': 'Full body',
+  arms: 'Arms',
+  core: 'Core',
 }
 
 export const MEAL_LABEL: Record<MealType, string> = {

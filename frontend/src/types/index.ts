@@ -29,6 +29,27 @@ export const EQUIPMENT: Equipment[] = ['barbell', 'dumbbell', 'machine', 'bodywe
 
 export const SET_TYPES: SetType[] = ['warmup', 'normal', 'drop', 'failure']
 
+export type TrainingStyle =
+  | 'push'
+  | 'pull'
+  | 'legs'
+  | 'upper'
+  | 'lower'
+  | 'full-body'
+  | 'arms'
+  | 'core'
+
+export const TRAINING_STYLES: TrainingStyle[] = [
+  'push',
+  'pull',
+  'legs',
+  'upper',
+  'lower',
+  'full-body',
+  'arms',
+  'core',
+]
+
 export const MEAL_TYPES: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack']
 
 /** Warm-up and drop sets are excluded from PRs and volume (system design §7). */
@@ -81,6 +102,8 @@ export interface Routine {
   id: string
   user_id: string
   name: string
+  /** e.g. "push", "pull", "upper", "lower". `null` = untagged. */
+  style: TrainingStyle | null
   notes: string | null
   created_at: string
   updated_at: string
@@ -125,6 +148,7 @@ export interface SessionExerciseGroup {
 
 export interface SessionDetail extends WorkoutSession {
   routine_name: string | null
+  routine_style: string | null
   groups: SessionExerciseGroup[]
   total_volume_kg: number
   total_sets: number
@@ -136,6 +160,7 @@ export interface SessionSummary {
   id: string
   session_date: string
   routine_name: string | null
+  routine_style: string | null
   title: string
   duration_minutes: number | null
   total_volume_kg: number
@@ -153,6 +178,36 @@ export interface ExerciseHistoryPoint {
   estimated_1rm: number
   volume_kg: number
   is_pr: boolean
+}
+
+/** Structure of a routine captured at session-start. The whole object is the
+ * `routine_snapshot` jsonb on workout_sessions, so editing the routine later
+ * never rewrites what past sessions "were." */
+export interface RoutineSnapshotExercise {
+  exercise_id: string
+  name: string
+  muscle_group: MuscleGroup
+  equipment: Equipment
+  order_index: number
+  target_sets: number
+  target_rep_range: string
+  target_rpe: number | null
+  rest_seconds: number
+  notes: string | null
+}
+
+export interface RoutineSnapshot {
+  routine_id: string
+  routine_name: string
+  style: TrainingStyle | null
+  exercises: RoutineSnapshotExercise[]
+}
+
+export interface SetHistoryPoint {
+  session_id: string
+  date: string
+  /** keyed by set index (1-based); only indices present in that session. */
+  by_set: Record<number, { weight_kg: number; reps: number; e1rm: number }>
 }
 
 export interface PlateauStatus {

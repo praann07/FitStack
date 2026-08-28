@@ -36,6 +36,56 @@ export async function fetchAllSets(): Promise<WorkoutSet[]> {
   return unwrap(data, error, 'Loading sets')
 }
 
+/** A session plus the routine style attributed to it for style-filtering:
+ * from the session's own routine_snapshot when present, else the live
+ * routines.style join, else null (freestyle / routine since deleted). */
+export interface RoutedSession extends WorkoutSession {
+  routine_style: string | null
+}
+
+/** Like fetchSessions but resolves each session's routine_style. */
+export async function fetchSessionsWithStyle(opts?: { onlyFinished?: boolean }): Promise<RoutedSession[]> {
+  const sessions = await fetchSessions(opts)
+  if (sessions.length === 0) return []
+
+  const styleBySession = new Map<string, string | null>()
+  const liveRoutineIds = new Set<string>()
+
+  for (const s of sessions) {
+    const snap = (s as WorkoutSession & { routine_snapshot?: { style?: string | null } | null }).routine_snapshot
+    if (snap && snap.style !== undefined && snap.style !== null) {
+      styleBySession.set(s.id, snap.style)
+    } else if (s.routine_id) {
+      liveRoutineIds.add(s.routine_id)
+    }
+  }
+
+  if (liveRoutineIds.size > 0) {
+    const { data: routines } = await supabase
+      .from('routines')
+      .select('id, style')
+      .in('id', [...liveRoutineIds])
+    for (const s of sessions) {
+      if (styleBySession.has(s.id)) continue
+      if (!s.routine_id) {
+        styleBySession.set(s.id, null)
+        continue
+      }
+      const live = (routines ?? []).find((r) => r.id === s.routine_id)
+      styleBySession.set(s.id, live?.style ?? null)
+    }
+  } else {
+    for (const s of sessions) {
+      if (!styleBySession.has(s.id)) styleBySession.set(s.id, null)
+    }
+  }
+
+  return sessions.map((s) => ({
+    ...s,
+    routine_style: styleBySession.get(s.id) ?? null,
+  }))
+}
+
 export async function fetchFoods(): Promise<Food[]> {
   const { data, error } = await supabase.from('foods').select('*')
   return unwrap(data, error, 'Loading foods')

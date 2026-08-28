@@ -21,7 +21,7 @@ import { useToastStore } from '@/stores/toastStore'
 import { useWorkoutStore } from '@/stores/workoutStore'
 import { workoutService } from '@/services'
 import { longDate } from '@/lib/date'
-import { MUSCLE_COLOR, MUSCLE_LABEL, EQUIPMENT_LABEL } from '@/lib/format'
+import { MUSCLE_COLOR, MUSCLE_LABEL, EQUIPMENT_LABEL, STYLE_LABEL } from '@/lib/format'
 
 export function RoutineDetailPage() {
   const user = useAuthStore((s) => s.user)
@@ -96,8 +96,9 @@ function DetailView({ userId, routineId }: { userId: string; routineId: string }
         subtitle={
           <span className="flex flex-wrap items-center gap-2">
             <span className="text-ink-faint">Created {longDate(r.created_at.slice(0, 10))}</span>
-            <Badge tone="neutral">{r.exercises.length} exercises</Badge>
-            <Badge tone="neutral">{totalSets} working sets</Badge>
+              <Badge tone="neutral">{r.exercises.length} exercises</Badge>
+              {r.style && <Badge tone="neutral">{STYLE_LABEL[r.style]}</Badge>}
+              <Badge tone="neutral">{totalSets} working sets</Badge>
             {muscles.map((g) => (
               <span key={g} className="inline-flex items-center gap-1.5 text-[11.5px] text-ink-muted">
                 <span className="size-1.5 rounded-full" style={{ background: MUSCLE_COLOR[g] }} aria-hidden />

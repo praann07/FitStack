@@ -1,7 +1,7 @@
 import { supabase, currentUserId } from '@/lib/supabase'
 import * as derive from './derive'
 import { today } from '@/lib/date'
-import { fetchExercises, fetchSessions, fetchAllSets, groupSetsBySession, indexById } from './queries'
+import { fetchExercises, fetchSessions, fetchAllSets, fetchSessionsWithStyle, groupSetsBySession, indexById } from './queries'
 import { ApiError } from '@/types'
 import type {
   Exercise,
@@ -12,9 +12,12 @@ import type {
   Routine,
   RoutineDetail,
   RoutineExercise,
+  RoutineSnapshot,
   SessionDetail,
   SessionSummary,
+  SetHistoryPoint,
   SetType,
+  TrainingStyle,
   WeeklyVolumePoint,
   WorkoutSession,
   WorkoutSet,
@@ -31,6 +34,7 @@ export interface LogSetPayload {
 
 export interface RoutineInput {
   name: string
+  style: TrainingStyle | null
   notes: string | null
   exercises: {
     exercise_id: string
@@ -74,6 +78,30 @@ async function attachRoutineExercises(routines: Routine[]): Promise<RoutineDetai
   return routines.map((r) => ({ ...r, exercises: byRoutine.get(r.id) ?? [] }))
 }
 
+/** Frozen copy of a routine taken at session-start, so later edits to the
+ * template never retroactively rewrite history (D6 fix). */
+function captureRoutineSnapshot(routine: RoutineDetail): RoutineSnapshot {
+  return {
+    routine_id: routine.id,
+    routine_name: routine.name,
+    style: routine.style,
+    exercises: routine.exercises
+      .sort((a, b) => a.order_index - b.order_index)
+      .map((re) => ({
+        exercise_id: re.exercise.id,
+        name: re.exercise.name,
+        muscle_group: re.exercise.muscle_group,
+        equipment: re.exercise.equipment,
+        order_index: re.order_index,
+        target_sets: re.target_sets,
+        target_rep_range: re.target_rep_range,
+        target_rpe: re.target_rpe,
+        rest_seconds: re.rest_seconds,
+        notes: re.notes,
+      })),
+  }
+}
+
 /** Runs the same full chronological PR pass the old backend ran after every
  * write, but only persists rows whose is_pr actually flipped (the original
  * rewrote every set in history unconditionally on every log/edit/delete). */
@@ -94,13 +122,32 @@ async function recomputeAndPersistPRs(): Promise<WorkoutSet[]> {
 }
 
 async function loadSessionDetail(session: WorkoutSession): Promise<SessionDetail> {
-  const [{ data: sets, error }, exercises, name] = await Promise.all([
+  const snap = (session as WorkoutSession & { routine_snapshot?: RoutineSnapshot | null }).routine_snapshot
+  const [{ data: sets, error }, exercises] = await Promise.all([
     supabase.from('workout_sets').select('*').eq('session_id', session.id).order('set_number'),
     fetchExercises(),
-    routineName(session.routine_id),
   ])
   if (error) throw new ApiError(error.message, 500)
-  return derive.buildSessionDetail(session, (sets ?? []) as WorkoutSet[], indexById(exercises), name)
+
+  if (snap) {
+    // Snapshot is authoritative: no live join needed for identity.
+    return derive.buildSessionDetail(
+      session,
+      (sets ?? []) as WorkoutSet[],
+      indexById(exercises),
+      snap.routine_name,
+      snap.style,
+    )
+  }
+
+  const name = await routineName(session.routine_id)
+  return derive.buildSessionDetail(
+    session,
+    (sets ?? []) as WorkoutSet[],
+    indexById(exercises),
+    name,
+    null, // pre-snapshot / freestyle: no style attribution
+  )
 }
 
 /**
@@ -186,7 +233,7 @@ export const workoutService = {
     const userId = await currentUserId()
     const { data: routine, error } = await supabase
       .from('routines')
-      .insert({ user_id: userId, name: input.name.trim(), notes: input.notes })
+      .insert({ user_id: userId, name: input.name.trim(), style: input.style ?? null, notes: input.notes })
       .select()
       .single()
     if (error) throw new ApiError(error.message, 500)
@@ -202,7 +249,7 @@ export const workoutService = {
   async updateRoutine(_userId: string, routineId: string, input: RoutineInput): Promise<RoutineDetail> {
     const { error } = await supabase
       .from('routines')
-      .update({ name: input.name.trim(), notes: input.notes, updated_at: new Date().toISOString() })
+      .update({ name: input.name.trim(), style: input.style ?? null, notes: input.notes, updated_at: new Date().toISOString() })
       .eq('id', routineId)
     if (error) throw new ApiError(error.message, 500)
 
@@ -252,19 +299,24 @@ export const workoutService = {
     const exerciseById = indexById(exercises)
 
     const routineIds = [...new Set(sessions.map((s) => s.routine_id).filter((id): id is string => id !== null))]
-    const { data: routines } = routineIds.length > 0 ? await supabase.from('routines').select('id, name').in('id', routineIds) : { data: [] }
-    const nameById = new Map((routines ?? []).map((r) => [r.id, r.name as string]))
+    const { data: routines } = routineIds.length > 0 ? await supabase.from('routines').select('id, name, style').in('id', routineIds) : { data: [] }
+    const routineById = new Map((routines ?? []).map((r) => [r.id, { name: r.name as string, style: r.style as string | null }]))
 
-    return sessions.map((session) =>
-      derive.buildSessionSummary(
+    return sessions.map((session) => {
+      const snap = (session as WorkoutSession & { routine_snapshot?: RoutineSnapshot | null }).routine_snapshot
+      const live = session.routine_id ? routineById.get(session.routine_id) : undefined
+      const routineName = snap ? snap.routine_name : (live?.name ?? null)
+      const routineStyle = snap ? snap.style : (live?.style ?? null)
+      return derive.buildSessionSummary(
         derive.buildSessionDetail(
           session,
           setsBySession.get(session.id) ?? [],
           exerciseById,
-          session.routine_id ? (nameById.get(session.routine_id) ?? null) : null,
+          routineName,
+          routineStyle,
         ),
-      ),
-    )
+      )
+    })
   },
 
   async getSession(_userId: string, sessionId: string): Promise<SessionDetail> {
@@ -285,11 +337,19 @@ export const workoutService = {
     if (active) throw new ApiError('You already have a workout in progress.', 409)
 
     const userId = await currentUserId()
+
+    let snapshot: RoutineSnapshot | null = null
+    if (routineId) {
+      const routine = await workoutService.getRoutine(_userId, routineId)
+      snapshot = captureRoutineSnapshot(routine)
+    }
+
     const { data, error } = await supabase
       .from('workout_sessions')
       .insert({
         user_id: userId,
         routine_id: routineId,
+        routine_snapshot: snapshot,
         session_date: today(),
         started_at: new Date().toISOString(),
       })
@@ -432,9 +492,22 @@ export const workoutService = {
 
   // --- Analysis -------------------------------------------------------------
 
-  async exerciseHistory(_userId: string, exerciseId: string): Promise<ExerciseHistoryPoint[]> {
-    const [sessions, sets] = await Promise.all([fetchSessions(), fetchAllSets()])
-    return derive.buildExerciseHistory(sessions, groupSetsBySession(sets), exerciseId)
+  async exerciseHistory(
+    _userId: string,
+    exerciseId: string,
+    opts?: { style?: string | null },
+  ): Promise<ExerciseHistoryPoint[]> {
+    const [sessions, sets] = await Promise.all([fetchSessionsWithStyle(), fetchAllSets()])
+    return derive.buildExerciseHistory(sessions, groupSetsBySession(sets), exerciseId, opts?.style)
+  },
+
+  async setHistory(
+    _userId: string,
+    exerciseId: string,
+    opts?: { style?: string | null },
+  ): Promise<SetHistoryPoint[]> {
+    const [sessions, sets] = await Promise.all([fetchSessionsWithStyle(), fetchAllSets()])
+    return derive.buildSetHistory(sessions, groupSetsBySession(sets), exerciseId, opts?.style)
   },
 
   async plateauStatus(_userId: string, exerciseId: string): Promise<PlateauStatus | null> {

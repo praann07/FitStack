@@ -18,16 +18,17 @@ import { EmptyState, Skeleton } from '@/components/ui/EmptyState'
 import { Select } from '@/components/ui/Field'
 import { Segmented } from '@/components/ui/Segmented'
 import { ExerciseProgressChart } from '@/components/charts/ExerciseProgressChart'
+import { SetProgressionChart } from '@/components/charts/SetProgressionChart'
 import { useAsync } from '@/hooks/useAsync'
 import { useAuthStore } from '@/stores/authStore'
 import { workoutService } from '@/services'
 import { longDate, durationLabel, relativeDays, shiftDate, today } from '@/lib/date'
 import { num, signed, volume as volumeFmt } from '@/lib/format'
-import { MUSCLE_COLOR, MUSCLE_LABEL } from '@/lib/format'
+import { MUSCLE_COLOR, MUSCLE_LABEL, STYLE_LABEL } from '@/lib/format'
 import { downloadCsv, csvDateStamp } from '@/lib/export'
 import { PLATEAU_SESSION_WINDOW } from '@/lib/strength'
-import { MUSCLE_GROUPS } from '@/types'
-import type { Exercise, ExerciseHistoryPoint, PlateauStatus, SessionSummary } from '@/types'
+import { MUSCLE_GROUPS, TRAINING_STYLES } from '@/types'
+import type { Exercise, ExerciseHistoryPoint, PlateauStatus, SessionSummary, SetHistoryPoint } from '@/types'
 
 type Tab = 'sessions' | 'progression'
 type Period = '30' | '90' | 'all'
@@ -263,6 +264,7 @@ function SessionRow({ session, onOpen }: { session: SessionSummary; onOpen: () =
 function ProgressionTab({ userId }: { userId: string }) {
   const exercises = useAsync(() => workoutService.trainedExercises(userId), [userId])
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [style, setStyle] = useState<string>('')
 
   const exerciseId = selectedId ?? exercises.data?.[0]?.id ?? null
   const selected = exercises.data?.find((e) => e.id === exerciseId) ?? null
@@ -295,7 +297,7 @@ function ProgressionTab({ userId }: { userId: string }) {
         <EmptyState
           icon={<LineChart className="size-5" />}
           title="No progression data yet"
-          description="Log a few sessions and each lift gets its own estimated-1RM curve, PR markers and plateau check."
+          description="Log a few sessions and each lift gets its own progress curves, PR markers and plateau check."
         />
       </Card>
     )
@@ -303,12 +305,22 @@ function ProgressionTab({ userId }: { userId: string }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <ExercisePickerRow
-        exercises={exercises.data}
-        value={exerciseId}
-        onChange={setSelectedId}
-      />
-      {selected && <ExerciseProgression key={selected.id} userId={userId} exercise={selected} />}
+      <div className="flex flex-wrap items-center gap-3">
+        <ExercisePickerRow
+          exercises={exercises.data}
+          value={exerciseId}
+          onChange={setSelectedId}
+        />
+        <StylePicker value={style} onChange={setStyle} />
+      </div>
+      {selected && (
+        <ExerciseProgression
+          key={`${selected.id}:${style}`}
+          userId={userId}
+          exercise={selected}
+          routineStyle={style === '' ? null : style}
+        />
+      )}
     </div>
   )
 }
@@ -353,14 +365,44 @@ function ExercisePickerRow({
   )
 }
 
-function ExerciseProgression({ userId, exercise }: { userId: string; exercise: Exercise }) {
+function StylePicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <label htmlFor="progression-style" className="flex items-center gap-3">
+      <span className="text-[13px] font-medium text-ink-muted">Style</span>
+      <div className="w-44">
+        <Select id="progression-style" value={value} onChange={(e) => onChange(e.target.value)}>
+          <option value="">All styles</option>
+          {TRAINING_STYLES.map((s) => (
+            <option key={s} value={s}>
+              {STYLE_LABEL[s]}
+            </option>
+          ))}
+        </Select>
+      </div>
+    </label>
+  )
+}
+
+function ExerciseProgression({
+  userId,
+  exercise,
+  routineStyle,
+}: {
+  userId: string
+  exercise: Exercise
+  routineStyle: string | null
+}) {
   const history = useAsync(
-    () => workoutService.exerciseHistory(userId, exercise.id),
-    [userId, exercise.id],
+    () => workoutService.exerciseHistory(userId, exercise.id, { style: routineStyle }),
+    [userId, exercise.id, routineStyle],
   )
   const plateau = useAsync(
     () => workoutService.plateauStatus(userId, exercise.id),
     [userId, exercise.id],
+  )
+  const setHistory = useAsync(
+    () => workoutService.setHistory(userId, exercise.id, { style: routineStyle }),
+    [userId, exercise.id, routineStyle],
   )
 
   if (history.loading) return <Skeleton className="h-[380px] w-full" />
@@ -453,6 +495,41 @@ function ExerciseProgression({ userId, exercise }: { userId: string; exercise: E
         </CardBody>
       </Card>
 
+      <Card>
+        <CardHeader
+          title="Set by set"
+          subtitle="Estimated 1RM for each working set across sessions — see the whole ladder, not just the top."
+        />
+        <CardBody>
+          {setHistory.loading ? (
+            <Skeleton className="h-[280px] w-full" />
+          ) : setHistory.error ? (
+            <EmptyState
+              icon={<AlertTriangle className="size-5" />}
+              title="Couldn't load set data"
+              description={setHistory.error}
+            />
+          ) : (setHistory.data?.length ?? 0) === 0 ? (
+            <EmptyState
+              icon={<LineChart className="size-5" />}
+              title="No set-by-set data for this filter"
+              description="Warm-up and drop sets are excluded. Pick 'All styles' or log working sets to see the ladder."
+            />
+          ) : (
+            <SetProgressionChart points={setHistory.data!} />
+          )}
+          {!setHistory.loading && !setHistory.error && (setHistory.data?.length ?? 0) > 0 && (
+            <p className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line pt-3 text-[11.5px] text-ink-muted">
+              {Array.from({ length: maxSetIndex(setHistory.data!) }, (_, k) => k + 1).map((i) => (
+                <span key={i} className="inline-flex items-center gap-1.5">
+                  <span className="h-0.5 w-4 rounded bg-current" aria-hidden /> Set {i}
+                </span>
+              ))}
+            </p>
+          )}
+        </CardBody>
+      </Card>
+
       <SessionBreakdown points={points} />
     </div>
   )
@@ -537,6 +614,10 @@ function SessionBreakdown({ points }: { points: ExerciseHistoryPoint[] }) {
       </CardBody>
     </Card>
   )
+}
+
+function maxSetIndex(points: SetHistoryPoint[]): number {
+  return points.reduce((m, p) => Math.max(m, ...Object.keys(p.by_set).map(Number)), 0)
 }
 
 function MiniStat({

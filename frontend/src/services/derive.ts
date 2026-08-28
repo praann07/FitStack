@@ -41,6 +41,7 @@ import type {
   SessionDetail,
   SessionExerciseGroup,
   SessionSummary,
+  SetHistoryPoint,
   TrendPoint,
   User,
   WeeklyVolumePoint,
@@ -65,6 +66,7 @@ export function buildSessionDetail(
   sets: WorkoutSet[],
   exerciseById: Map<string, Exercise>,
   routineName: string | null,
+  routineStyle: string | null = null,
 ): SessionDetail {
   const order: string[] = []
   const byExercise = new Map<string, WorkoutSet[]>()
@@ -99,6 +101,7 @@ export function buildSessionDetail(
   return {
     ...session,
     routine_name: routineName,
+    routine_style: routineStyle,
     groups,
     total_volume_kg: totalVolume(sets),
     total_sets: sets.filter(isQualifying).length,
@@ -112,6 +115,7 @@ export function buildSessionSummary(detail: SessionDetail): SessionSummary {
     id: detail.id,
     session_date: detail.session_date,
     routine_name: detail.routine_name,
+    routine_style: detail.routine_style,
     title: sessionTitle(detail.routine_name, detail.groups),
     duration_minutes: detail.duration_minutes,
     total_volume_kg: detail.total_volume_kg,
@@ -122,11 +126,13 @@ export function buildSessionSummary(detail: SessionDetail): SessionSummary {
   }
 }
 
-/** sessions must be pre-sorted oldest-to-newest; setsBySession keyed by session id. */
+/** sessions must be pre-sorted oldest-to-newest; setsBySession keyed by session id.
+ * sessions may carry `routine_style` (RoutedSession) so a style filter can apply. */
 export function buildExerciseHistory(
-  sessions: WorkoutSession[],
+  sessions: Array<WorkoutSession & { routine_style?: string | null }>,
   setsBySession: Map<string, WorkoutSet[]>,
   exerciseId: string,
+  style?: string | null,
 ) {
   const points: {
     session_id: string
@@ -139,6 +145,7 @@ export function buildExerciseHistory(
   }[] = []
 
   for (const session of sessions) {
+    if (style && session.routine_style !== style) continue
     const sets = (setsBySession.get(session.id) ?? []).filter((s) => s.exercise_id === exerciseId)
     const qualifying = sets.filter(isQualifying)
     if (qualifying.length === 0) continue
@@ -172,6 +179,36 @@ export function buildPlateauStatus(
     current_estimated_1rm: Math.round(result.currentE1rm * 10) / 10,
     last_improvement_date: result.lastImprovementDate,
   }
+}
+
+/** Per-session, per-set progression for one exercise. qualifying sets only;
+ * by_set keyed by set_number ("plot what exists" — a session with 3 sets has
+ * keys 1,2,3, not 4+). `style` filters sessions by their attributed routine
+ * style (snapshot-first). */
+export function buildSetHistory(
+  sessions: Array<WorkoutSession & { routine_style?: string | null }>,
+  setsBySession: Map<string, WorkoutSet[]>,
+  exerciseId: string,
+  style?: string | null,
+): SetHistoryPoint[] {
+  const points: SetHistoryPoint[] = []
+  for (const session of sessions) {
+    if (style && session.routine_style !== style) continue
+    const sets = (setsBySession.get(session.id) ?? [])
+      .filter((s) => s.exercise_id === exerciseId && isQualifying(s))
+      .sort((a, b) => a.set_number - b.set_number)
+    if (sets.length === 0) continue
+    const by_set: Record<number, { weight_kg: number; reps: number; e1rm: number }> = {}
+    for (const s of sets) {
+      by_set[s.set_number] = {
+        weight_kg: s.weight_kg,
+        reps: s.reps,
+        e1rm: estimated1RM(s.weight_kg, s.reps),
+      }
+    }
+    points.push({ session_id: session.id, date: session.session_date, by_set })
+  }
+  return points.sort((a, b) => a.date.localeCompare(b.date))
 }
 
 /** sessions oldest-to-newest; sets = every qualifying set the user has ever logged. */
