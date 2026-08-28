@@ -11,3 +11,9 @@ Thumbs.db
 
 # Supabase temp
 supabase/.temp/
+
+# Playwright MCP test artifacts
+.playwright-mcp/
+
+# Orphaned root lockfile (no root package.json)
+package-lock.json

@@ -3,10 +3,11 @@ import { ListPlus, Plus, Search, X } from 'lucide-react'
 import { Card, CardHeader, CardBody } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { EmptyState, Skeleton } from '@/components/ui/EmptyState'
-import { Input } from '@/components/ui/Field'
+import { Field, Input, Select } from '@/components/ui/Field'
 import { useAsync, useAction } from '@/hooks/useAsync'
 import { workoutService } from '@/services'
-import { MUSCLE_COLOR, MUSCLE_LABEL } from '@/lib/format'
+import { EQUIPMENT_LABEL, MUSCLE_COLOR, MUSCLE_LABEL } from '@/lib/format'
+import { EQUIPMENT, MUSCLE_GROUPS } from '@/types'
 import type { Exercise, Equipment, MuscleGroup } from '@/types'
 
 /**
@@ -29,6 +30,8 @@ export function ExercisePicker({
       workoutService.createExercise(userId, { name, muscle_group, equipment }),
   )
   const [newName, setNewName] = useState('')
+  const [newMuscle, setNewMuscle] = useState<MuscleGroup>('chest')
+  const [newEquipment, setNewEquipment] = useState<Equipment>('machine')
 
   return (
     <Card className="border-volt/30">
@@ -97,24 +100,56 @@ export function ExercisePicker({
           onSubmit={(e) => {
             e.preventDefault()
             if (newName.trim() === '') return
-            void create.run(newName.trim(), 'chest', 'machine').then((ex) => {
+            void create.run(newName.trim(), newMuscle, newEquipment).then((ex) => {
               if (ex) {
                 setNewName('')
+                setNewMuscle('chest')
+                setNewEquipment('machine')
                 onPick(ex)
               }
             })
           }}
-          className="flex items-center gap-2"
+          className="mt-1 flex flex-col gap-3 rounded-lg border border-line bg-surface/40 p-3"
         >
-          <Input
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            placeholder="Custom exercise name (e.g. Landmine press)"
-            className="flex-1"
-          />
-          <Button size="sm" type="submit" loading={create.loading}>
-            <Plus className="size-3.5" /> Create
-          </Button>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Muscle group" htmlFor="picker-muscle">
+              <Select
+                id="picker-muscle"
+                value={newMuscle}
+                onChange={(e) => setNewMuscle(e.target.value as MuscleGroup)}
+              >
+                {MUSCLE_GROUPS.map((m) => (
+                  <option key={m} value={m}>
+                    {MUSCLE_LABEL[m]}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Equipment" htmlFor="picker-equipment">
+              <Select
+                id="picker-equipment"
+                value={newEquipment}
+                onChange={(e) => setNewEquipment(e.target.value as Equipment)}
+              >
+                {EQUIPMENT.map((e) => (
+                  <option key={e} value={e}>
+                    {EQUIPMENT_LABEL[e]}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+          <div className="flex items-center gap-2">
+            <Input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="Custom exercise name (e.g. Landmine press)"
+              className="flex-1"
+            />
+            <Button size="sm" type="submit" loading={create.loading}>
+              <Plus className="size-3.5" /> Create
+            </Button>
+          </div>
         </form>
         {create.error && <p className="text-[12.5px] text-danger">{create.error}</p>}
       </CardBody>

@@ -27,7 +27,7 @@ place so trends are visible across both.
 | Frontend | React 19, Vite, TypeScript, Tailwind CSS v4, Recharts, Zustand |
 | Backend | None — the frontend talks to Supabase directly via `supabase-js` |
 | Database | PostgreSQL (Supabase), authorized entirely by Row Level Security |
-| Auth | Supabase Auth, email one-time-code (no passwords) |
+| Auth | Supabase Auth, email + password, with a manual approval gate (`profiles.approved`) |
 | Deployment | Vercel (frontend only), GitHub Actions CI (lint + build) |
 
 See [`fitstack-system-design.md`](fitstack-system-design.md) for the original
@@ -53,10 +53,11 @@ cp .env.example .env   # fill in VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY
 npm run dev
 ```
 
-Open `http://localhost:5173`, register an account (email one-time code — no
-password), and go. Registering needs a working Supabase Auth email
-configuration; see [`DEPLOY.md`](DEPLOY.md) for the one manual dashboard step
-that requires.
+Open `http://localhost:5173`, register with an email + password (name, body,
+and training goal are collected on the same screen), and go. New accounts
+start with `profiles.approved = false`, so they land on a "pending approval"
+screen until that flag is flipped in the Supabase dashboard — see
+[`DEPLOY.md`](DEPLOY.md).
 
 ## Deploying
 
@@ -64,8 +65,10 @@ See [`DEPLOY.md`](DEPLOY.md).
 
 ## Status
 
-Schema, RLS policies, auth, and the full service layer are built and wired to
-a live Supabase project (see `supabase/migrations/` for the schema/RLS, and
-`frontend/src/services/` for the client). Not yet done: a full real
-end-to-end run (register → log a workout → log food → check the dashboard)
-against live Supabase, frontend test coverage, and an actual live deployment.
+Schema, RLS policies, auth (email + password with the approval gate), and the
+full service layer are built and wired to a live Supabase project (see
+`supabase/migrations/` for the schema/RLS, and `frontend/src/services/` for
+the client). A full end-to-end run (register → approve → log a workout → log
+food → check the dashboard) has been verified against live Supabase in a
+browser. The frontend passes lint, typecheck, and a production build. Not yet
+done: frontend unit test coverage and an actual live deployment to Vercel.

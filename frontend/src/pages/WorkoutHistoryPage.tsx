@@ -4,6 +4,7 @@ import {
   Activity,
   AlertTriangle,
   ChevronRight,
+  Download,
   Dumbbell,
   History,
   LineChart,
@@ -23,6 +24,7 @@ import { workoutService } from '@/services'
 import { longDate, durationLabel, relativeDays, shiftDate, today } from '@/lib/date'
 import { num, signed, volume as volumeFmt } from '@/lib/format'
 import { MUSCLE_COLOR, MUSCLE_LABEL } from '@/lib/format'
+import { downloadCsv, csvDateStamp } from '@/lib/export'
 import { PLATEAU_SESSION_WINDOW } from '@/lib/strength'
 import { MUSCLE_GROUPS } from '@/types'
 import type { Exercise, ExerciseHistoryPoint, PlateauStatus, SessionSummary } from '@/types'
@@ -97,6 +99,25 @@ function SessionsTab({ userId }: { userId: string }) {
     { sessions: 0, volume: 0, sets: 0, prs: 0 },
   )
 
+  function handleExport() {
+    const rows = (sessions.data ?? []).map((s) => [
+      s.session_date,
+      s.title,
+      s.routine_name ?? '',
+      s.duration_minutes,
+      Math.round(s.total_volume_kg * 10) / 10,
+      s.total_sets,
+      s.exercise_count,
+      s.pr_count,
+      (s.muscle_groups ?? []).join(' / '),
+    ])
+    downloadCsv(
+      `fitstack-workouts-${csvDateStamp()}.csv`,
+      ['date', 'title', 'routine', 'duration_min', 'volume_kg', 'sets', 'exercises', 'prs', 'muscles'],
+      rows,
+    )
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -105,7 +126,12 @@ function SessionsTab({ userId }: { userId: string }) {
             ? `${totals.sessions} workouts · ${volumeFmt(totals.volume)} · ${totals.sets} hard sets · ${totals.prs} PRs`
             : 'Loading…'}
         </p>
-        <Segmented options={PERIODS} value={period} onChange={setPeriod} size="sm" />
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={handleExport} disabled={!sessions.data?.length}>
+            <Download className="size-3.5" /> CSV
+          </Button>
+          <Segmented options={PERIODS} value={period} onChange={setPeriod} size="sm" />
+        </div>
       </div>
 
       {sessions.loading && (

@@ -37,7 +37,6 @@ src/
   components/
     ui/          Button, Card, Field, Modal, ConfirmDialog, Badge, Segmented,
                  Stat, Ring, EmptyState/Skeleton, Toaster
-    auth/        OtpForm (shared by LoginPage/RegisterPage)
     layout/      AppShell (sidebar + mobile drawer), PageHeader, AuthLayout
     charts/      TrendChart, VolumeChart, TdeeChart, ExerciseProgressChart
     macros/      MacroSummary, MacroBar, SuggestionCard
@@ -61,8 +60,8 @@ src/
 
 | Route | Screen |
 | --- | --- |
-| `/login`, `/register` | Email one-time-code auth (shared `OtpForm`) |
-| `/onboarding` | Post-signup profile completion (goal, rate, height, baseline weigh-in) |
+| `/login`, `/register` | Email + password auth; register collects name, body, and goal inline |
+| `/pending-approval` | Shown until `profiles.approved` is flipped in the Supabase dashboard |
 | `/dashboard` | Today's macros, weekly volume, PR feed, plateau flags, adaptive suggestion |
 | `/routines` `/routines/new` `/routines/:id` `/routines/:id/edit` | Routine templates |
 | `/workout` | Start from routine or freestyle, exercise picker, set logging, rest timer |
@@ -75,11 +74,14 @@ src/
 ## How auth works
 
 `lib/supabase.ts` holds the `supabase-js` client; session persistence and
-token refresh are handled by the SDK itself (not hand-rolled). A new email
-gets a one-time code (`supabase.auth.signInWithOtp` + `verifyOtp`); a
-database trigger stub-creates a `profiles` row on first signup, and
-`authStore`'s `needs_onboarding` status routes a not-yet-onboarded user to
-`/onboarding` before they can reach anything else. Every query after that is
+token refresh are handled by the SDK itself (not hand-rolled). Auth is email
++ password (`supabase.auth.signUp` / `signInWithPassword`). A database
+trigger stub-creates a `profiles` row on first signup, and the register flow
+completes the profile inline (name, body, goal) — there's no separate
+onboarding screen anymore. Every `profiles` row starts with `approved =
+false`, and `authStore`'s status mapping (`approved → authenticated`,
+otherwise `pending_approval`) routes a not-yet-approved user to
+`/pending-approval` instead of the dashboard. Every query that follows is
 authorized by Postgres Row Level Security, not application code.
 
 ## Deploying

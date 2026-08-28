@@ -3,6 +3,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Copy,
+  Download,
   Pencil,
   Plus,
   Salad,
@@ -26,6 +27,7 @@ import { nutritionService } from '@/services'
 import { friendlyDate, shiftDate, today } from '@/lib/date'
 import { grams, kcal, num } from '@/lib/format'
 import { MEAL_LABEL } from '@/lib/format'
+import { downloadCsv } from '@/lib/export'
 import { MEAL_TYPES } from '@/types'
 import type { Food, FoodLogEntry, MealType } from '@/types'
 import type { LogFoodPayload } from '@/services'
@@ -85,6 +87,26 @@ function NutritionView({
     })
   }
 
+  function handleExport() {
+    const entries = (day.data?.entries ?? []).slice().sort((a, b) => a.meal_type.localeCompare(b.meal_type))
+    const rows = entries.map((e) => [
+      e.log_date,
+      MEAL_LABEL[e.meal_type],
+      e.food.name,
+      e.food.brand ?? '',
+      Math.round(e.quantity_g * 10) / 10,
+      e.macros.calories,
+      e.macros.protein_g,
+      e.macros.carbs_g,
+      e.macros.fat_g,
+    ])
+    downloadCsv(
+      `fitstack-food-${date}.csv`,
+      ['date', 'meal', 'food', 'brand', 'quantity_g', 'calories', 'protein_g', 'carbs_g', 'fat_g'],
+      rows,
+    )
+  }
+
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
@@ -118,6 +140,14 @@ function NutritionView({
                 Today
               </Button>
             )}
+            <Button
+              variant="outline"
+              size="md"
+              onClick={handleExport}
+              disabled={!day.data?.entries.length}
+            >
+              <Download className="size-4" /> CSV
+            </Button>
             <Button
               onClick={() => {
                 setAddMeal(mealForNow())

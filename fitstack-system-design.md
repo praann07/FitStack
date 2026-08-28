@@ -5,7 +5,8 @@
 > §3 (Architecture), §5 (Database Schema), §6 (Auth Flow), and §8 (API Design)
 > describe the original FastAPI + Neon system and no longer match the running
 > app: there is no backend server or REST API now, schema + RLS policies live
-> in `supabase/migrations/`, and auth is Supabase email OTP rather than
+> in `supabase/migrations/`, and auth is Supabase email + password with a
+> manual approval gate (`profiles.approved`, migration `0007`) rather than
 > password + JWT. §7 (Core Business Logic) is still accurate — that logic was
 > ported to `frontend/src/lib/adaptive.ts`/`lib/strength.ts`/`services/derive.ts`
 > unchanged, not rewritten.
