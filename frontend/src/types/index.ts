@@ -68,8 +68,10 @@ export interface User {
   goal_rate_kg_week: number
   height_cm: number
   created_at: string
-  /** Manually flipped by an admin in the Supabase dashboard (pilot-stage access gate). */
+  /** Manually flipped by an admin (pilot-stage access gate). */
   approved: boolean
+  /** PostgreSQL-defined access tier (see supabase/migrations/0010_admin_role_unique.sql). */
+  role: 'admin' | 'user'
 }
 
 // ---------------------------------------------------------------------------

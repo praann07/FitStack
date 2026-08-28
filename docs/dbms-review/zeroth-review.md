@@ -264,7 +264,7 @@ Serious lifters managing a training program alongside a nutrition plan currently
 | Actor | Description |
 |---|---|
 | **Trainee (end user)** | The primary actor. Registers, gets approved, logs workouts/food/weight, views the dashboard, manages routines and custom exercises/foods. |
-| **Admin (approver)** | Currently: whoever holds access to the Supabase project dashboard — the pilot's operator. Reviews new signups and flips `profiles.approved`. Not yet a formal database role/flag (honest limitation — see Future Work). |
+| **Admin (approver)** | A formal `profiles.role` (`'admin'`) enforced at the database layer (see §Future Work — now implemented). Approves/suspends pilot accounts from the in-app **Admin** screen via SECURITY DEFINER RPCs; the pilot operator (project owner) is the bootstrapped admin. |
 | **System (seed data)** | Not a human actor, but represented in the schema: library exercises and foods (`is_custom = false`, `created_by = NULL`) are owned by no user and visible to everyone, distinct from user-created custom content. |
 
 ---
@@ -504,9 +504,14 @@ GROUP BY e.muscle_group;
 
 **Planned before Review 2:**
 - Deploy the frontend to a public Vercel URL and onboard the initial 10–15 pilot users.
-- Formalize the "Admin" actor as an explicit database-level role/flag rather than "whoever has dashboard access."
+- ~~Formalize the "Admin" actor as an explicit database-level role/flag rather than "whoever has dashboard access."~~
 - Evaluate moving the heavier aggregate computations (weekly volume, dashboard summary) from client-side recomputation into database-side views or materialized views as real usage data accumulates and per-request payload size grows.
-- Add a `UNIQUE` constraint on `nutrition_targets(user_id, effective_date)` and `tdee_estimates(user_id, estimate_date)` — currently enforced by an explicit delete-then-insert in application code rather than the database, a known gap.
+- ~~Add a `UNIQUE` constraint on `nutrition_targets(user_id, effective_date)` and `tdee_estimates(user_id, estimate_date)` — currently enforced by an explicit delete-then-insert in application code rather than the database, a known gap.~~
 - Gather real pilot usage data to validate (or correct) the adaptive TDEE and plateau-detection thresholds against actual user behavior.
+
+> **Completed since this review was written** (migration `0010_admin_role_unique.sql` + frontend admin screen):
+> - Admin is now a formal `profiles.role` (`'user' | 'admin'`). All approval changes route through SECURITY DEFINER RPCs that re-check `is_admin()` in their body, and a BEFORE UPDATE trigger blocks any non-admin from touching `approved`/`role` — self-approval and self-promotion are closed at the database layer, not the client. A minimal in-app **Admin** page (`/admin`, hidden from non-admins) calls those RPCs to list/approve/suspend pilot accounts, so approval no longer requires Supabase dashboard access.
+> - `UNIQUE` constraints added on `nutrition_targets(user_id, effective_date)` and `tdee_estimates(user_id, estimate_date)`, making the database the source of truth for one nutrition target and one TDEE estimate per user per day (the app's delete-then-insert write pattern now backs onto real constraints).
+> - The materialized-view item above remains deliberately deferred, exactly as its conditional wording foresees ("as real usage data accumulates").
 
 **Conclusion:** FitStack demonstrates a complete relational data model spanning three previously-siloed fitness domains, with authorization enforced structurally at the database layer rather than trusted to application code — a design that closed two real, independently-verified security defects (cross-user data access via IDOR, and cross-user private-data leakage) simply as a consequence of the schema design, not as a patch. The system has been carried from initial design through a live, verified deployment, not left at the design-document stage.

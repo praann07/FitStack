@@ -8,6 +8,7 @@ import {
   LogOut,
   Menu,
   Salad,
+  ShieldCheck,
   Target,
   TrendingUp,
   X,
@@ -46,7 +47,7 @@ export function AppShell() {
 
   if (!user) return null
 
-  const nav = <NavItems onNavigate={() => setDrawer(false)} />
+  const nav = <NavItems isAdmin={user.role === 'admin'} onNavigate={() => setDrawer(false)} />
 
   return (
     <div className="min-h-dvh bg-canvas">
@@ -145,7 +146,7 @@ export function AppShell() {
   )
 }
 
-function NavItems({ onNavigate }: { onNavigate: () => void }) {
+function NavItems({ isAdmin, onNavigate }: { isAdmin: boolean; onNavigate: () => void }) {
   const hasActive = useWorkoutStore((s) => s.hasActive)
 
   return (
@@ -173,6 +174,21 @@ function NavItems({ onNavigate }: { onNavigate: () => void }) {
           )}
         </NavLink>
       ))}
+      {isAdmin && (
+        <NavLink
+          to="/admin"
+          onClick={onNavigate}
+          className={({ isActive }) =>
+            cn(
+              'group mt-1 flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13.5px] font-medium transition-colors',
+              isActive ? 'bg-volt-soft text-volt' : 'text-ink-muted hover:bg-surface-2 hover:text-ink',
+            )
+          }
+        >
+          <ShieldCheck className="size-4.5 shrink-0" />
+          <span className="flex-1">Admin</span>
+        </NavLink>
+      )}
     </div>
   )
 }

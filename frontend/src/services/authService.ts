@@ -11,6 +11,7 @@ interface ProfileRow {
   goal_rate_kg_week: number | null
   height_cm: number | null
   approved: boolean
+  role: 'admin' | 'user'
   created_at: string
 }
 
@@ -24,6 +25,7 @@ function toUser(email: string, profile: ProfileRow): User {
     height_cm: profile.height_cm ?? 0,
     created_at: profile.created_at,
     approved: profile.approved,
+    role: profile.role ?? 'user',
   }
 }
 

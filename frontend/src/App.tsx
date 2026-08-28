@@ -17,6 +17,7 @@ const RoutineEditorPage = lazy(() => import('@/pages/RoutineEditorPage').then((m
 const NutritionPage = lazy(() => import('@/pages/NutritionPage').then((m) => ({ default: m.NutritionPage })))
 const NutritionTargetsPage = lazy(() => import('@/pages/NutritionTargetsPage').then((m) => ({ default: m.NutritionTargetsPage })))
 const ProgressPage = lazy(() => import('@/pages/ProgressPage').then((m) => ({ default: m.ProgressPage })))
+const AdminPage = lazy(() => import('@/pages/AdminPage').then((m) => ({ default: m.AdminPage })))
 
 export default function App() {
   const status = useAuthStore((s) => s.status)
@@ -53,6 +54,14 @@ export default function App() {
           <Route path="/nutrition" element={<NutritionPage />} />
           <Route path="/nutrition/targets" element={<NutritionTargetsPage />} />
           <Route path="/progress" element={<ProgressPage />} />
+          <Route
+            path="/admin"
+            element={
+              <RequireAdmin>
+                <AdminPage />
+              </RequireAdmin>
+            }
+          />
         </Route>
 
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
@@ -73,8 +82,13 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
-function RequirePendingApproval() {
-  const status = useAuthStore((s) => s.status)
+function RequireAdmin({ children }: { children: React.ReactNode }) {
+  const user = useAuthStore((s) => s.user)
+  if (!user || user.role !== 'admin') return <Navigate to="/dashboard" replace />
+  return <>{children}</>
+}
+
+function RequirePendingApproval() {  const status = useAuthStore((s) => s.status)
 
   if (status === 'restoring') return <SplashScreen />
   if (status === 'anonymous') return <Navigate to="/login" replace />
