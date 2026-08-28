@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { AlertTriangle, ShieldCheck, ShieldOff } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Button } from '@/components/ui/Button'
@@ -27,13 +28,22 @@ function AdminView({ currentUserId }: { currentUserId: string }) {
   const push = useToastStore((s) => s.push)
   const users = useAsync(() => adminService.listUsers(), [])
   const flip = useAction((row: AdminUser, approved: boolean) => adminService.setApproved(row.id, approved))
+  const [pendingId, setPendingId] = useState<string | null>(null)
 
   async function handleFlip(row: AdminUser, approve: boolean) {
-    if (row.id === currentUserId) return
-    const ok = await flip.run(row, approve)
-    if (ok === null) return
-    push(`${approve ? 'Approved' : 'Suspended'}: ${row.full_name || row.email}`, 'success')
-    users.reload()
+    if (row.id === currentUserId || pendingId) return
+    setPendingId(row.id)
+    try {
+      const ok = await flip.run(row, approve)
+      if (ok === null) {
+        if (flip.error) push(flip.error, 'error')
+        return
+      }
+      push(`${approve ? 'Approved' : 'Suspended'}: ${row.full_name || row.email}`, 'success')
+      users.reload()
+    } finally {
+      setPendingId(null)
+    }
   }
 
   return (
@@ -99,7 +109,8 @@ function AdminView({ currentUserId }: { currentUserId: string }) {
                     <Button
                       variant={row.approved ? 'ghost' : 'secondary'}
                       size="sm"
-                      loading={flip.loading}
+                      loading={pendingId === row.id}
+                      disabled={pendingId !== null}
                       onClick={() => void handleFlip(row, !row.approved)}
                     >
                       {row.approved ? (
