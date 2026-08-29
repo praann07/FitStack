@@ -30,11 +30,27 @@ create index audit_log_record_id_idx on public.audit_log(record_id);
 
 alter table public.audit_log enable row level security;
 
--- Only admins can read audit logs
-create policy "admins view audit logs" on public.audit_log
+-- Audit logs are append-only: admins can read, system can insert, nobody can update/delete
+-- Select policy: only authenticated admins can view audit logs
+create policy "admins select audit logs" on public.audit_log
   for select using (
-    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin')
+    auth.role() = 'authenticated'
+    and exists (
+      select 1 from public.profiles p
+      where p.id = auth.uid() and p.role = 'admin'
+    )
   );
+
+-- Insert policy: only SECURITY DEFINER functions can write (via system role)
+create policy "audit log insert only via system" on public.audit_log
+  for insert with check (false);  -- Insert only via trigger/SECURITY DEFINER function
+
+-- Prevent all updates and deletes (audit trail must be immutable)
+create policy "audit log no updates" on public.audit_log
+  for update using (false);
+
+create policy "audit log no deletes" on public.audit_log
+  for delete using (false);
 
 -- 3. Update RLS policies to exclude soft-deleted items
 -- Exercises: filter out deleted items
