@@ -50,7 +50,7 @@ alter policy "own routines" on public.routines
 alter policy "select visible foods" on public.foods
   using (is_custom = false and deleted_at is null or created_by = auth.uid() and deleted_at is null);
 
--- 4. Helper function: soft_delete_exercise
+-- 4. Helper function: soft_delete_exercise (with authorization check)
 create or replace function public.soft_delete_exercise(exercise_id uuid)
 returns void
 language plpgsql
@@ -72,6 +72,18 @@ begin
     'equipment', equipment, 'is_custom', is_custom, 'created_by', created_by
   ) into old_data
   from public.exercises where id = exercise_id;
+
+  if old_data is null then
+    raise exception 'exercise not found' using errcode = '42704';
+  end if;
+
+  -- Authorization check: user can only delete their own custom exercises
+  if not (
+    (old_data->>'is_custom')::boolean = true
+    and (old_data->>'created_by')::uuid = user_id
+  ) then
+    raise exception 'forbidden: can only delete your own custom exercises' using errcode = '42501';
+  end if;
 
   -- Soft delete the exercise
   update public.exercises set deleted_at = now() where id = exercise_id;
