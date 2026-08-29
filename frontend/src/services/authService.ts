@@ -13,6 +13,7 @@ interface ProfileRow {
   approved: boolean
   role: 'admin' | 'user'
   created_at: string
+  timezone: string
 }
 
 function toUser(email: string, profile: ProfileRow): User {
@@ -26,6 +27,7 @@ function toUser(email: string, profile: ProfileRow): User {
     created_at: profile.created_at,
     approved: profile.approved,
     role: profile.role ?? 'user',
+    timezone: profile.timezone ?? 'UTC',
   }
 }
 
@@ -141,5 +143,12 @@ export const authService = {
     if (goal === 'bulk') return 0.25
     if (goal === 'cut') return -0.5
     return 0
+  },
+
+  /** Fetch current user's profile (used for polling approval status). */
+  async getCurrentProfile(): Promise<ProfileRow> {
+    const { data: authData } = await supabase.auth.getUser()
+    if (!authData.user) throw new ApiError('No authenticated user', 401)
+    return fetchProfile(authData.user.id)
   },
 }

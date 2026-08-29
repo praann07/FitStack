@@ -15,36 +15,56 @@ interface AsyncState<T> {
   reload: () => void
 }
 
+interface AsyncOptions {
+  interval?: number
+}
+
 /**
  * Loads data from a service on mount (and whenever `deps` change) with
  * loading / error states. `reload` re-runs the loader without changing deps.
+ * If `interval` is provided, polls at that interval (ms).
  */
-export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]): AsyncState<T> {
+export function useAsync<T>(
+  fn: () => Promise<T>,
+  deps: unknown[],
+  options?: AsyncOptions,
+): AsyncState<T> {
   const [data, setData] = useState<T | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [tick, setTick] = useState(0)
   const fnRef = useRef(fn)
   fnRef.current = fn
+  const intervalRef = useRef<NodeJS.Timeout>()
 
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
-    setError(null)
-    fnRef.current().then(
-      (result) => {
-        if (cancelled) return
-        setData(result)
-        setLoading(false)
-      },
-      (err: unknown) => {
-        if (cancelled) return
-        setError(errorMessage(err))
-        setLoading(false)
-      },
-    )
+    const run = async () => {
+      setLoading(true)
+      setError(null)
+      fnRef.current().then(
+        (result) => {
+          if (cancelled) return
+          setData(result)
+          setLoading(false)
+        },
+        (err: unknown) => {
+          if (cancelled) return
+          setError(errorMessage(err))
+          setLoading(false)
+        },
+      )
+    }
+
+    run()
+
+    if (options?.interval) {
+      intervalRef.current = setInterval(run, options.interval)
+    }
+
     return () => {
       cancelled = true
+      if (intervalRef.current) clearInterval(intervalRef.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [...deps, tick])

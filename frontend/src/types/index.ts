@@ -72,6 +72,8 @@ export interface User {
   approved: boolean
   /** PostgreSQL-defined access tier (see supabase/migrations/0010_admin_role_unique.sql). */
   role: 'admin' | 'user'
+  /** IANA timezone (e.g., 'America/New_York', 'Asia/Kolkata'). Used for streak/TDEE date calculations. */
+  timezone: string
 }
 
 // ---------------------------------------------------------------------------

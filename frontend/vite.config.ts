@@ -14,4 +14,18 @@ export default defineConfig({
   server: {
     port: 5173,
   },
+  build: {
+    target: 'ES2020',
+    minify: 'terser',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-supabase': ['@supabase/supabase-js'],
+          'vendor-ui': ['lucide-react', 'recharts'],
+          'vendor-date': ['date-fns', 'date-fns-tz'],
+        },
+      },
+    },
+  },
 })

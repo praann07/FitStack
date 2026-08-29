@@ -113,6 +113,61 @@ function TargetsView({
             />
           )}
 
+          {target.data && target.data.source === 'adaptive' && (
+            <Card>
+              <CardBody>
+                <div className="space-y-3">
+                  <div className="flex items-start gap-3">
+                    <span className="rounded-lg bg-volt/10 p-2">
+                      <Flame className="size-5 text-volt" />
+                    </span>
+                    <div className="flex-1">
+                      <p className="text-[14px] font-semibold text-ink">Your TDEE is personalized</p>
+                      <p className="mt-1 text-[13px] leading-relaxed text-ink-muted">
+                        Instead of using a generic formula, FitStack calculates your actual daily calorie burn from
+                        your real weight and food logs. It's more accurate because it's based on what actually happens
+                        to your body.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-2 border-t border-line pt-3 text-[12.5px]">
+                    <div className="flex items-center justify-between">
+                      <span className="text-ink-muted">Learning phase:</span>
+                      <span className="font-semibold text-ink">~7 days of logging data</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-ink-muted">Confidence:</span>
+                      <span className="flex items-center gap-1.5">
+                        {(tdee.data?.length ?? 0) > 14 ? (
+                          <>
+                            <span className="size-1.5 rounded-full bg-positive" />
+                            <span className="font-semibold text-positive">High</span>
+                          </>
+                        ) : (tdee.data?.length ?? 0) > 7 ? (
+                          <>
+                            <span className="size-1.5 rounded-full bg-warning" />
+                            <span className="font-semibold text-warning">Medium</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="size-1.5 rounded-full bg-amber-500" />
+                            <span className="font-semibold text-amber-600">Building</span>
+                          </>
+                        )}
+                      </span>
+                    </div>
+                  </div>
+
+                  <p className="text-[12px] leading-relaxed text-ink-faint border-t border-line pt-3">
+                    💡 Keep logging your workouts and food for more accurate targets. Manual overrides work but
+                    disable adaptive learning.
+                  </p>
+                </div>
+              </CardBody>
+            </Card>
+          )}
+
           <div className="grid gap-4 lg:grid-cols-2">
             <Card>
               <CardHeader

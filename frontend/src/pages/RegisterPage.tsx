@@ -65,18 +65,14 @@ export function RegisterPage() {
     e.preventDefault()
     const errs: Errors = {}
     const req = required()
-    const num = (v: number | null, min: number, max: number, label: string) =>
-      v === null ? `${label} is required` : range(min, max, label)(String(v))
 
+    // Only validate required fields (account info)
     const fn = compose(req, minLength(2, 'Full name'))
     if (fn(fullName)) errs.full_name = fn(fullName) ?? undefined
     if (emailRule()(email)) errs.email = emailRule()(email) ?? undefined
     if (req(password)) errs.password = 'Password is required'
     else if (password.length < 8) errs.password = 'Password must be at least 8 characters'
     if (confirm !== password) errs.confirm = 'Passwords do not match'
-    if (num(height, 120, 230, 'Height')) errs.height_cm = num(height, 120, 230, 'Height') ?? undefined
-    if (num(weight, 30, 250, 'Weight')) errs.weight_kg = num(weight, 30, 250, 'Weight') ?? undefined
-    if (num(age, 13, 90, 'Age')) errs.age = num(age, 13, 90, 'Age') ?? undefined
 
     setErrors(errs)
     if (Object.values(errs).some(Boolean)) return
@@ -84,15 +80,20 @@ export function RegisterPage() {
     setLoading(true)
     setFormError(null)
     try {
+      // If body metrics or goals not filled, use sensible defaults
+      const finalHeight = height ?? 170
+      const finalWeight = weight ?? 75
+      const finalAge = age ?? 30
+
       await register({
         email,
         password,
         full_name: fullName,
         goal,
         goal_rate_kg_week: goalRate,
-        height_cm: height as number,
-        weight_kg: weight as number,
-        age: age as number,
+        height_cm: finalHeight,
+        weight_kg: finalWeight,
+        age: finalAge,
         sex,
         activity_level: activity,
       })
@@ -119,8 +120,9 @@ export function RegisterPage() {
       <div className="animate-scale-in rounded-2xl border border-line bg-surface p-6 shadow-[var(--shadow-pop)] sm:p-7">
         <h1 className="text-xl font-bold tracking-tight text-ink">Create your account</h1>
         <p className="mt-1 text-[13.5px] text-ink-muted">
-          One account for training, nutrition and progress. New accounts need approval before
-          they can log in — you'll get access once that's done.
+          One account for training, nutrition and progress. Only an email and password are required to start —
+          fill in body metrics and goals later if you'd like (defaults are provided). New accounts need approval
+          before they can log in — you'll get access once that's done.
         </p>
 
         {formError && (
@@ -204,10 +206,13 @@ export function RegisterPage() {
             </Field>
           </fieldset>
 
-          <fieldset className="flex flex-col gap-4">
-            <legend className="text-[12px] font-semibold uppercase tracking-wide text-ink-faint">
-              Body &amp; activity
-            </legend>
+          <fieldset className="flex flex-col gap-4 opacity-75">
+            <div className="flex items-center justify-between">
+              <legend className="text-[12px] font-semibold uppercase tracking-wide text-ink-faint">
+                Body &amp; activity
+              </legend>
+              <span className="text-[11px] font-medium text-ink-faint">Optional</span>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Height (cm)" htmlFor="height" error={errors.height_cm}>
                 <NumberField
@@ -252,10 +257,13 @@ export function RegisterPage() {
             </Field>
           </fieldset>
 
-          <fieldset className="flex flex-col gap-4">
-            <legend className="text-[12px] font-semibold uppercase tracking-wide text-ink-faint">
-              Training goal
-            </legend>
+          <fieldset className="flex flex-col gap-4 opacity-75">
+            <div className="flex items-center justify-between">
+              <legend className="text-[12px] font-semibold uppercase tracking-wide text-ink-faint">
+                Training goal
+              </legend>
+              <span className="text-[11px] font-medium text-ink-faint">Optional</span>
+            </div>
             <div className="grid grid-cols-3 gap-2">
               {GOALS.map((g) => (
                 <button

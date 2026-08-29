@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { Logo } from '@/components/Logo'
 import { AppShell } from '@/components/layout/AppShell'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { LoginPage } from '@/pages/LoginPage'
 import { RegisterPage } from '@/pages/RegisterPage'
 import { PendingApprovalPage } from '@/pages/PendingApprovalPage'
@@ -30,8 +31,9 @@ export default function App() {
   if (status === 'restoring') return <SplashScreen />
 
   return (
-    <Suspense fallback={<SplashScreen />}>
-      <Routes>
+    <ErrorBoundary>
+      <Suspense fallback={<SplashScreen />}>
+        <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/pending-approval" element={<RequirePendingApproval />} />
@@ -66,7 +68,8 @@ export default function App() {
 
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
-    </Suspense>
+      </Suspense>
+    </ErrorBoundary>
   )
 }
 

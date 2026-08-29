@@ -6,7 +6,9 @@ import {
   isYesterday,
   parseISO,
   startOfWeek,
+  toDate,
 } from 'date-fns'
+import { utcToZonedTime, zonedTimeToUtc } from 'date-fns-tz'
 
 /** Canonical wire format for all dates: yyyy-MM-dd (matches DATE columns). */
 export type IsoDate = string
@@ -21,6 +23,37 @@ export function fromIsoDate(date: IsoDate): Date {
 
 export function today(): IsoDate {
   return toIsoDate(new Date())
+}
+
+/**
+ * Get today's date in a specific timezone.
+ * Use this instead of today() when you have the user's timezone.
+ * @param timezone IANA timezone string (e.g., 'America/New_York', 'Asia/Kolkata')
+ */
+export function getTodayInTimezone(timezone: string): IsoDate {
+  const now = new Date()
+  try {
+    const zonedDate = utcToZonedTime(now, timezone)
+    return toIsoDate(zonedDate)
+  } catch {
+    // Fallback to browser timezone if IANA timezone is invalid
+    return toIsoDate(now)
+  }
+}
+
+/**
+ * Convert a local date string (in user's timezone) to a midnight UTC Date.
+ * Use this when logging data with a user-specific timezone.
+ * @param isoDate Date in yyyy-MM-dd format (interpreted in user's timezone)
+ * @param timezone IANA timezone string
+ */
+export function dateInTimezoneToUtc(isoDate: IsoDate, timezone: string): Date {
+  try {
+    const localDate = parseISO(isoDate)
+    return zonedTimeToUtc(localDate, timezone)
+  } catch {
+    return fromIsoDate(isoDate)
+  }
 }
 
 export function shiftDate(date: IsoDate, days: number): IsoDate {
