@@ -321,12 +321,20 @@ function ActiveWorkout({
     if (result) {
       setActive(false)
       stopRest()
-      push(
-        `Finished — ${result.total_sets} sets, ${volumeFmt(result.total_volume_kg)}${
-          result.pr_count > 0 ? `, ${result.pr_count} PR${result.pr_count === 1 ? '' : 's'}` : ''
-        }`,
-        'success',
-      )
+      const elapsed = elapsedMinutes ?? 0
+      const hours = Math.floor(elapsed / 60)
+      const mins = elapsed % 60
+      const timeStr = hours > 0 ? `${hours}h ${mins.toString().padStart(2, '0')}m` : `${mins}m`
+
+      let msg = `Finished — ${result.total_sets} sets, ${volumeFmt(result.total_volume_kg)}${result.pr_count > 0 ? `, ${result.pr_count} PR${result.pr_count === 1 ? '' : 's'}` : ''} (${timeStr})`
+
+      if (elapsed >= 180) {
+        msg += ` ⏰ Yo, ${hours}h ${mins}m? That's a marathon session. Time to eat and rest.`
+      } else if (elapsed >= 120) {
+        msg += ` ⚠️ ${hours}h ${mins}m — long session. Hydrate and recover.`
+      }
+
+      push(msg, elapsed >= 120 ? 'info' : 'success')
       navigate(`/workout/${result.id}`, { replace: true })
     }
   }

@@ -186,11 +186,12 @@ export function proposeRetarget(input: RetargetInput): RetargetResult | null {
   if (deviation <= DEVIATION_THRESHOLD) return null
   if (input.weeks_deviating < 2) return null
 
-  const movingTooFast = Math.abs(actual) > Math.abs(goal)
   const magnitude = deviation > 0.5 ? 150 : 100
-  // Gaining faster than planned -> cut calories; slower -> add calories.
+  // Move toward the goal: overshooting (actual past goal) cuts intake, undershooting adds.
   const direction = actual > goal ? -1 : 1
   const calorie_delta = magnitude * direction
+  // "Needs to reduce intake" — regardless of goal sign, this is a pull.
+  const reducing = calorie_delta < 0
 
   const proposed = macrosFromCalories(
     current.calories + calorie_delta,
@@ -198,20 +199,28 @@ export function proposeRetarget(input: RetargetInput): RetargetResult | null {
     input.goal,
   )
 
-  const reason =
-    direction < 0
-      ? input.goal === 'cut'
-        ? 'Losing faster than planned'
-        : 'Gaining faster than planned'
-      : input.goal === 'cut'
-        ? 'Fat loss has stalled'
-        : 'Gaining slower than planned'
+  // Labels must reflect what actually happened (sign of `actual`), not just the
+  // direction of the correction — for negative (cut) goals the old logic inverted:
+  // gaining during a cut was labelled "Losing faster than planned", losing faster
+  // than a cut was labelled "Fat loss has stalled".
+  let reason: string
+  if (input.goal === 'cut') {
+    reason = reducing
+      ? actual >= 0
+        ? 'Moving the wrong way — gaining during a cut'
+        : 'Fat loss has stalled'
+      : 'Losing faster than planned'
+  } else if (input.goal === 'bulk') {
+    reason = reducing ? 'Gaining faster than planned' : 'Gaining slower than planned'
+  } else {
+    reason = reducing ? 'Trend moving up' : 'Trend moving down'
+  }
 
   const detail =
     `Your smoothed trend is moving ${actual >= 0 ? '+' : '−'}${Math.abs(actual).toFixed(2)} kg/week ` +
     `against a ${goal >= 0 ? '+' : '−'}${Math.abs(goal).toFixed(2)} kg/week goal ` +
     `(${Math.round(deviation * 100)}% off) for ${input.weeks_deviating} weeks. ` +
-    `${movingTooFast ? 'Pulling' : 'Adding'} ${Math.abs(calorie_delta)} kcal keeps protein fixed and adjusts carbs and fat.`
+    `${reducing ? 'Pulling' : 'Adding'} ${Math.abs(calorie_delta)} kcal keeps protein fixed and adjusts carbs and fat.`
 
   return {
     calorie_delta,

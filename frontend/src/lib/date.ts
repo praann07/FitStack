@@ -6,9 +6,8 @@ import {
   isYesterday,
   parseISO,
   startOfWeek,
-  toDate,
 } from 'date-fns'
-import { utcToZonedTime, zonedTimeToUtc } from 'date-fns-tz'
+import { fromZonedTime, toZonedTime } from 'date-fns-tz'
 
 /** Canonical wire format for all dates: yyyy-MM-dd (matches DATE columns). */
 export type IsoDate = string
@@ -33,7 +32,7 @@ export function today(): IsoDate {
 export function getTodayInTimezone(timezone: string): IsoDate {
   const now = new Date()
   try {
-    const zonedDate = utcToZonedTime(now, timezone)
+    const zonedDate = fromZonedTime(now, timezone)
     return toIsoDate(zonedDate)
   } catch {
     // Fallback to browser timezone if IANA timezone is invalid
@@ -50,7 +49,7 @@ export function getTodayInTimezone(timezone: string): IsoDate {
 export function dateInTimezoneToUtc(isoDate: IsoDate, timezone: string): Date {
   try {
     const localDate = parseISO(isoDate)
-    return zonedTimeToUtc(localDate, timezone)
+    return toZonedTime(localDate, timezone)
   } catch {
     return fromIsoDate(isoDate)
   }
@@ -91,14 +90,6 @@ export function longDate(date: IsoDate): string {
 
 export function shortDate(date: IsoDate): string {
   return format(fromIsoDate(date), 'd MMM')
-}
-
-export function monthDay(date: IsoDate): string {
-  return format(fromIsoDate(date), 'd MMM')
-}
-
-export function weekLabel(weekStartDate: IsoDate): string {
-  return format(fromIsoDate(weekStartDate), 'd MMM')
 }
 
 export function timeOfDay(iso: string | null): string {

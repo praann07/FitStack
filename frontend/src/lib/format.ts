@@ -38,11 +38,6 @@ export function signed(value: number | null | undefined, digits = 1, unit = ''):
   return `${sign}${trim(Math.abs(value), digits)}${unit ? ` ${unit}` : ''}`
 }
 
-export function percent(value: number | null | undefined, digits = 0): string {
-  if (value === null || value === undefined || Number.isNaN(value)) return '—'
-  return `${trim(value, digits)}%`
-}
-
 function trim(value: number, digits: number): string {
   const fixed = value.toFixed(digits)
   return fixed.replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1')
@@ -55,10 +50,6 @@ export function initials(name: string): string {
     .slice(0, 2)
     .map((p) => p[0]?.toUpperCase() ?? '')
     .join('')
-}
-
-export function titleCase(value: string): string {
-  return value.charAt(0).toUpperCase() + value.slice(1)
 }
 
 export const GOAL_LABEL: Record<Goal, string> = {

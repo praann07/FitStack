@@ -413,7 +413,7 @@ function MuscleLegend({ sets }: { sets: Record<MuscleGroup, number> }) {
 
 function DashboardSkeleton() {
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-5" role="status" aria-busy="true" aria-label="Loading dashboard">
       <div>
         <Skeleton className="h-8 w-56" />
         <Skeleton className="mt-2 h-5 w-40" />

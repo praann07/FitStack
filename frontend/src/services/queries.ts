@@ -17,23 +17,76 @@ function unwrap<T>(data: T | null, error: { message: string } | null, label: str
   return data as T
 }
 
+/**
+ * De-duplicate concurrent calls to the same bulk fetch that resolve to shared
+ * immutable data (sessions, sets, foods, metrics, ...).
+ *
+ * The dashboard mounts several read models (summary, trend, weekly volume,
+ * and the adaptive suggestion) in one render, and each used to issue its own
+ * independent bulk query -- so `workout_sets` alone fired ~6x per dashboard
+ * load (compounded by React StrictMode's double-invoke in dev). All callers
+ * within `ttlMs` share a single in-flight promise and cache the first result.
+ *
+ * The result is treated as immutable shared state: callers only `.filter` /
+ * group / reduce it, never mutate it, so caching is safe.
+ */
+const bulkCache = new Map<string, { promise: Promise<unknown>; expires: number }>()
+const BULK_TTL_MS = 3000
+
+function dedupe<T>(key: string, loader: () => Promise<T>): Promise<T> {
+  const now = Date.now()
+  const hit = bulkCache.get(key)
+  if (hit && hit.expires > now) return hit.promise as Promise<T>
+
+  const promise = loader().finally(() => {
+    // Give late joiners the cached value, then drop it once it's stale so a
+    // later explicit reload still refetches fresh data.
+    const entry = bulkCache.get(key)
+    if (entry && entry.promise === promise) {
+      entry.expires = Date.now() + BULK_TTL_MS
+    }
+  })
+  bulkCache.set(key, { promise, expires: now + BULK_TTL_MS })
+  return promise
+}
+
+export { dedupe }
+
+/**
+ * Drop every cached bulk-fetch result. Call after any write that changes the
+ * underlying rows (insert/update/delete on workout_sets, sessions, food_logs,
+ * nutrition_targets, body_metrics, exercises, foods), so a subsequent read
+ * within the TTL window cannot serve a snapshot that predates the write. The
+ * dedupe layer is a read-only optimization and must never mask new data.
+ */
+export function invalidateBulkCache(): void {
+  bulkCache.clear()
+}
+
 export async function fetchExercises(): Promise<Exercise[]> {
-  const { data, error } = await supabase.from('exercises').select('*').order('name')
-  return unwrap(data, error, 'Loading exercises')
+  return dedupe('exercises', async () => {
+    const { data, error } = await supabase.from('exercises').select('*').order('name')
+    return unwrap(data, error, 'Loading exercises')
+  })
 }
 
 /** onlyFinished=true excludes the in-progress session (ended_at IS NULL), if any. */
 export async function fetchSessions(opts?: { onlyFinished?: boolean }): Promise<WorkoutSession[]> {
-  let query = supabase.from('workout_sessions').select('*').order('session_date', { ascending: false })
-  if (opts?.onlyFinished) query = query.not('ended_at', 'is', null)
-  const { data, error } = await query
-  return unwrap(data, error, 'Loading workouts')
+  const key = `sessions:${opts?.onlyFinished ? 'finished' : 'all'}`
+  return dedupe(key, async () => {
+    let query = supabase.from('workout_sessions').select('*').order('session_date', { ascending: false })
+    if (opts?.onlyFinished) query = query.not('ended_at', 'is', null)
+    const { data, error } = await query
+    return unwrap(data, error, 'Loading workouts')
+  })
 }
 
 /** Every set visible to the caller (RLS-scoped via session ownership) -- one query, no session_id filter needed. */
 export async function fetchAllSets(): Promise<WorkoutSet[]> {
-  const { data, error } = await supabase.from('workout_sets').select('*').order('set_number')
-  return unwrap(data, error, 'Loading sets')
+  return dedupe('sets', async () => {
+    const { data, error } = await supabase.from('workout_sets').select('*').order('set_number')
+    return unwrap(data, error, 'Loading sets')
+  })
 }
 
 /** A session plus the routine style attributed to it for style-filtering:
@@ -87,18 +140,24 @@ export async function fetchSessionsWithStyle(opts?: { onlyFinished?: boolean }):
 }
 
 export async function fetchFoods(): Promise<Food[]> {
-  const { data, error } = await supabase.from('foods').select('*')
-  return unwrap(data, error, 'Loading foods')
+  return dedupe('foods', async () => {
+    const { data, error } = await supabase.from('foods').select('*')
+    return unwrap(data, error, 'Loading foods')
+  })
 }
 
 export async function fetchFoodLogs(): Promise<FoodLog[]> {
-  const { data, error } = await supabase.from('food_logs').select('*')
-  return unwrap(data, error, 'Loading food logs')
+  return dedupe('food_logs', async () => {
+    const { data, error } = await supabase.from('food_logs').select('*')
+    return unwrap(data, error, 'Loading food logs')
+  })
 }
 
 export async function fetchNutritionTargets(): Promise<NutritionTarget[]> {
-  const { data, error } = await supabase.from('nutrition_targets').select('*').order('effective_date', { ascending: false })
-  return unwrap(data, error, 'Loading nutrition targets')
+  return dedupe('nutrition_targets', async () => {
+    const { data, error } = await supabase.from('nutrition_targets').select('*').order('effective_date', { ascending: false })
+    return unwrap(data, error, 'Loading nutrition targets')
+  })
 }
 
 export async function fetchTdeeEstimates(): Promise<TdeeEstimate[]> {
@@ -113,11 +172,16 @@ export async function fetchDismissedSuggestionIds(): Promise<string[]> {
 }
 
 export async function fetchBodyMetrics(filters?: { from?: string; to?: string }): Promise<BodyMetric[]> {
-  let query = supabase.from('body_metrics').select('*').order('log_date', { ascending: false })
-  if (filters?.from) query = query.gte('log_date', filters.from)
-  if (filters?.to) query = query.lte('log_date', filters.to)
-  const { data, error } = await query
-  return unwrap(data, error, 'Loading body metrics')
+  const fkey = filters?.from ?? ''
+  const tkey = filters?.to ?? ''
+  const key = `body_metrics:${fkey}:${tkey}`
+  return dedupe(key, async () => {
+    let query = supabase.from('body_metrics').select('*').order('log_date', { ascending: false })
+    if (filters?.from) query = query.gte('log_date', filters.from)
+    if (filters?.to) query = query.lte('log_date', filters.to)
+    const { data, error } = await query
+    return unwrap(data, error, 'Loading body metrics')
+  })
 }
 
 export function groupSetsBySession(sets: WorkoutSet[]): Map<string, WorkoutSet[]> {

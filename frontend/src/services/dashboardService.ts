@@ -1,7 +1,7 @@
 import { supabase, currentUserId } from '@/lib/supabase'
 import * as derive from './derive'
 import { computeCurrentSuggestion } from './nutritionService'
-import { today, weekStart } from '@/lib/date'
+import { daysBetween, today, weekStart } from '@/lib/date'
 import {
   fetchBodyMetrics,
   fetchExercises,
@@ -96,8 +96,4 @@ export const dashboardService = {
       streak_days: derive.loggingStreak(loggedDates),
     }
   },
-}
-
-function daysBetween(from: string, to: string): number {
-  return Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86400000)
 }

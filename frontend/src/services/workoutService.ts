@@ -1,7 +1,7 @@
 import { supabase, currentUserId } from '@/lib/supabase'
 import * as derive from './derive'
 import { today } from '@/lib/date'
-import { fetchExercises, fetchSessions, fetchAllSets, fetchSessionsWithStyle, groupSetsBySession, indexById } from './queries'
+import { fetchExercises, fetchSessions, fetchAllSets, fetchSessionsWithStyle, groupSetsBySession, indexById, invalidateBulkCache } from './queries'
 import { ApiError } from '@/types'
 import type {
   Exercise,
@@ -104,8 +104,12 @@ function captureRoutineSnapshot(routine: RoutineDetail): RoutineSnapshot {
 
 /** Runs the same full chronological PR pass the old backend ran after every
  * write, but only persists rows whose is_pr actually flipped (the original
- * rewrote every set in history unconditionally on every log/edit/delete). */
+ * rewrote every set in history unconditionally on every log/edit/delete).
+ * Runs only after a set/session write, so it must read fresh rows: the bulk
+ * cache could otherwise serve a pre-write snapshot within its TTL and the
+ * just-written set would be invisible to (and crash) the caller. */
 async function recomputeAndPersistPRs(): Promise<WorkoutSet[]> {
+  invalidateBulkCache()
   const [sessions, sets] = await Promise.all([fetchSessions(), fetchAllSets()])
   const recomputed = derive.recomputePRs(sessions, sets)
   const changed = recomputed.filter((s, i) => s.is_pr !== sets[i].is_pr)
@@ -186,6 +190,7 @@ export const workoutService = {
       .select()
       .single()
     if (error) throw new ApiError(error.message, 500)
+    invalidateBulkCache()
     return data as Exercise
   },
 
@@ -472,6 +477,9 @@ export const workoutService = {
       .eq('session_id', sessionId)
     if (!count) throw new ApiError('Log at least one set before finishing this workout.', 422)
 
+    // A session's ended_at just changed; drop cached sessions so the next read
+    // sees it as finished (not mid-workout) without waiting out the TTL.
+    invalidateBulkCache()
     const { data, error } = await supabase
       .from('workout_sessions')
       .update({ ended_at: new Date().toISOString(), notes })

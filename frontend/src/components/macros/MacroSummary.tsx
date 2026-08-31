@@ -27,9 +27,8 @@ export function MacroSummary({
             {target ? (
               <>
                 <span className={remaining >= 0 ? 'text-ink-muted' : 'font-semibold text-danger'}>
-                  {remaining >= 0 ? `${Math.round(remaining).toLocaleString()} kcal` : `${Math.abs(Math.round(remaining)).toLocaleString()} kcal over`}
-                </span>{' '}
-                remaining
+                  {remaining >= 0 ? `${Math.round(remaining).toLocaleString()} kcal remaining` : `${Math.abs(Math.round(remaining)).toLocaleString()} kcal over`}
+                </span>
                 {onTargetClick && (
                   <button type="button" onClick={onTargetClick} className="ml-1 font-semibold text-volt hover:text-volt-dim">
                     Edit target

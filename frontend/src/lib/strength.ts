@@ -58,8 +58,10 @@ export function isPersonalRecord(
     { e1rm: 0, weight: 0 },
   )
   const candidateE1rm = estimated1RM(candidate.weight_kg, candidate.reps)
-  // +0.01 guards against float noise re-flagging an identical set.
-  return candidateE1rm > best.e1rm + 0.01 || candidate.weight_kg > best.weight + 0.01
+  // +0.01 guards against float noise re-flagging an identical set. Judging on
+  // e1RM alone (rather than raw weight) avoids flagging a heavier-but-weaker
+  // set, e.g. 110x1 after a 100x5, as a PR.
+  return candidateE1rm > best.e1rm + 0.01
 }
 
 export function emptyMuscleRecord(): Record<MuscleGroup, number> {

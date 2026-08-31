@@ -23,6 +23,7 @@ export function RestTimerBar() {
 
   const [remaining, setRemaining] = useState(0)
   const firedRef = useRef(false)
+  const stopTimeoutRef = useRef<number | null>(null)
 
   useEffect(() => {
     if (endsAt === null) return
@@ -35,13 +36,23 @@ export function RestTimerBar() {
         firedRef.current = true
         if (useRestTimerStore.getState().soundEnabled) playRestChime()
         push('Rest complete — next set', 'info')
-        window.setTimeout(() => useRestTimerStore.getState().stop(), 1500)
+        // Delay the auto-stop so the countdown lingers; clear any previous
+        // pending stop so an extend/timer-restart right after the chime isn't
+        // killed by a stale timeout from the previous cycle.
+        if (stopTimeoutRef.current !== null) window.clearTimeout(stopTimeoutRef.current)
+        stopTimeoutRef.current = window.setTimeout(() => useRestTimerStore.getState().stop(), 1500)
       }
     }
 
     tick()
     const id = window.setInterval(tick, 250)
-    return () => window.clearInterval(id)
+    return () => {
+      window.clearInterval(id)
+      if (stopTimeoutRef.current !== null) {
+        window.clearTimeout(stopTimeoutRef.current)
+        stopTimeoutRef.current = null
+      }
+    }
   }, [endsAt, push])
 
   if (endsAt === null) return null

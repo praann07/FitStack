@@ -1,5 +1,5 @@
 import { useAuthStore } from '@/stores/authStore'
-import { getTodayInTimezone, getTodayInTimezone as getTodayInTz, dateInTimezoneToUtc } from '@/lib/date'
+import { getTodayInTimezone as getTodayInTz, dateInTimezoneToUtc } from '@/lib/date'
 import type { IsoDate } from '@/lib/date'
 
 /**

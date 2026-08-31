@@ -1,4 +1,4 @@
-import { Component, ReactNode } from 'react'
+import { Component, type ReactNode } from 'react'
 import { AlertTriangle } from 'lucide-react'
 import { Button } from './ui/Button'
 import { Card } from './ui/Card'
@@ -50,7 +50,7 @@ export class ErrorBoundary extends Component<Props, State> {
                     We're sorry, but the app encountered an unexpected error. Don't worry — your data is safe.
                   </p>
                 </div>
-                {process.env.NODE_ENV === 'development' && this.state.errorInfo && (
+                {import.meta.env.DEV && this.state.errorInfo && (
                   <div className="rounded-lg border border-danger/20 bg-danger-soft/50 p-3 text-left">
                     <p className="text-[11px] font-mono text-danger">{this.state.error.message}</p>
                     <p className="mt-2 text-[10px] font-mono text-danger/70 max-h-32 overflow-auto">

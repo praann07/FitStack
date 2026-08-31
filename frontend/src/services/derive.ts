@@ -6,7 +6,7 @@
  * functions only -- no I/O, no Supabase calls -- so they're trivial to reason
  * about and match 1:1 against the Python they replace.
  */
-import { dateRange, shiftDate, weekLabel, weekStart } from '@/lib/date'
+import { dateRange, shiftDate, shortDate, weekStart } from '@/lib/date'
 import {
   ema,
   estimateTdee,
@@ -93,9 +93,9 @@ export function buildSessionDetail(
 
   let duration_minutes: number | null = null
   if (session.started_at && session.ended_at) {
-    duration_minutes = Math.round(
-      (new Date(session.ended_at).getTime() - new Date(session.started_at).getTime()) / 60000,
-    )
+    const started = new Date(session.started_at).getTime()
+    const ended = new Date(session.ended_at).getTime()
+    duration_minutes = Math.round((ended - started) / 60000)
   }
 
   return {
@@ -255,7 +255,7 @@ export function buildWeeklyVolume(
 
   return [...buckets.entries()].map(([wk, sets]) => ({
     week_start: wk,
-    label: weekLabel(wk),
+    label: shortDate(wk),
     total_volume_kg: totalVolume(sets),
     by_muscle_group: volumeByMuscleGroup(sets, exerciseById),
     sets_by_muscle_group: setsByMuscleGroup(sets, exerciseById),
@@ -287,7 +287,12 @@ export function recomputePRs(sessions: WorkoutSession[], sets: WorkoutSet[]): Wo
     }
     const current = best.get(s.exercise_id) ?? { e1rm: 0, weight: 0 }
     const e1rm = estimated1RM(s.weight_kg, s.reps)
-    const pr = e1rm > current.e1rm + 0.01 || s.weight_kg > current.weight + 0.01
+    // A set is a PR when its estimated 1RM beats the prior best. Matching the
+    // best weight with more reps is already covered, since more reps at the
+    // same weight always yields a higher e1RM. Judging on e1RM alone avoids
+    // falsely flagging a heavier-but-weaker set (e.g. 110x1 vs a prior 100x5)
+    // as a PR.
+    const pr = e1rm > current.e1rm + 0.01
     result.set(s.id, { ...s, is_pr: pr })
     if (pr) {
       best.set(s.exercise_id, { e1rm: Math.max(current.e1rm, e1rm), weight: Math.max(current.weight, s.weight_kg) })

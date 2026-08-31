@@ -15,19 +15,17 @@ interface AsyncState<T> {
   reload: () => void
 }
 
-interface AsyncOptions {
-  interval?: number
-}
-
 /**
  * Loads data from a service on mount (and whenever `deps` change) with
  * loading / error states. `reload` re-runs the loader without changing deps.
- * If `interval` is provided, polls at that interval (ms).
+ * When `opts.interval` is set (ms), the loader re-runs on that cadence so the
+ * data stays fresh (e.g. polling approval status), without flipping `loading`
+ * so the UI doesn't flicker.
  */
 export function useAsync<T>(
   fn: () => Promise<T>,
   deps: unknown[],
-  options?: AsyncOptions,
+  opts?: { interval?: number },
 ): AsyncState<T> {
   const [data, setData] = useState<T | null>(null)
   const [loading, setLoading] = useState(true)
@@ -35,12 +33,12 @@ export function useAsync<T>(
   const [tick, setTick] = useState(0)
   const fnRef = useRef(fn)
   fnRef.current = fn
-  const intervalRef = useRef<NodeJS.Timeout>()
+  const interval = opts?.interval
 
   useEffect(() => {
     let cancelled = false
-    const run = async () => {
-      setLoading(true)
+    const run = async (background = false) => {
+      if (!background) setLoading(true)
       setError(null)
       fnRef.current().then(
         (result) => {
@@ -57,17 +55,19 @@ export function useAsync<T>(
     }
 
     run()
-
-    if (options?.interval) {
-      intervalRef.current = setInterval(run, options.interval)
+    if (interval && interval > 0) {
+      const id = window.setInterval(() => run(true), interval)
+      return () => {
+        cancelled = true
+        window.clearInterval(id)
+      }
     }
 
     return () => {
       cancelled = true
-      if (intervalRef.current) clearInterval(intervalRef.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [...deps, tick])
+  }, [...deps, tick, interval])
 
   const reload = useCallback(() => setTick((t) => t + 1), [])
 

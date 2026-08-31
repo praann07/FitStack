@@ -13,6 +13,7 @@ import {
   fetchAllSets,
   groupSetsBySession,
   indexById,
+  invalidateBulkCache,
 } from './queries'
 import { ApiError } from '@/types'
 import type {
@@ -114,6 +115,7 @@ export const nutritionService = {
       .select()
       .single()
     if (error) throw new ApiError(error.message, 500)
+    invalidateBulkCache()
     return data as Food
   },
 
@@ -135,6 +137,7 @@ export const nutritionService = {
     const userId = await currentUserId()
     const { data, error } = await supabase.from('food_logs').insert({ ...payload, user_id: userId }).select().single()
     if (error) throw new ApiError(error.message, 500)
+    invalidateBulkCache()
     return data as FoodLog
   },
 
@@ -148,12 +151,14 @@ export const nutritionService = {
     }
     const { data, error } = await supabase.from('food_logs').update(patch).eq('id', logId).select().single()
     if (error) throw new ApiError(error.message, 500)
+    invalidateBulkCache()
     return data as FoodLog
   },
 
   async deleteLog(_userId: string, logId: string): Promise<void> {
     const { error } = await supabase.from('food_logs').delete().eq('id', logId)
     if (error) throw new ApiError(error.message, 500)
+    invalidateBulkCache()
   },
 
   async copyDay(_userId: string, from: string, to: string): Promise<number> {
@@ -171,6 +176,7 @@ export const nutritionService = {
     }))
     const { error } = await supabase.from('food_logs').insert(rows)
     if (error) throw new ApiError(error.message, 500)
+    invalidateBulkCache()
     return rows.length
   },
 
@@ -248,6 +254,7 @@ export const nutritionService = {
       .select()
       .single()
     if (error) throw new ApiError(error.message, 500)
+    invalidateBulkCache()
     return data as NutritionTarget
   },
 
@@ -282,6 +289,7 @@ export const nutritionService = {
       .select()
       .single()
     if (error) throw new ApiError(error.message, 500)
+    invalidateBulkCache()
     return data as NutritionTarget
   },
 

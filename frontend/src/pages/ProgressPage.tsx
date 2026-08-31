@@ -63,7 +63,9 @@ function ProgressView({
             {trend.loading ? (
               <Skeleton className="h-[260px] w-full" />
             ) : trend.data && trend.data.points.length > 1 ? (
-              <TrendChart points={trend.data.points} />
+              <>
+                <TrendChart points={trend.data.points} />
+              </>
             ) : (
               <EmptyState
                 title="No trend yet"

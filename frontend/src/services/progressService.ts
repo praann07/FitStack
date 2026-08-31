@@ -1,6 +1,6 @@
 import { supabase, currentUserId } from '@/lib/supabase'
 import * as derive from './derive'
-import { fetchBodyMetrics, fetchFoodLogs, fetchFoods, fetchSessions, fetchAllSets, groupSetsBySession, indexById } from './queries'
+import { fetchBodyMetrics, fetchFoodLogs, fetchFoods, fetchSessions, fetchAllSets, groupSetsBySession, indexById, invalidateBulkCache } from './queries'
 import { ApiError } from '@/types'
 import type { BodyMetric, ProgressTrend } from '@/types'
 
@@ -46,6 +46,7 @@ export const progressService = {
       .select()
       .single()
     if (error) throw new ApiError(error.message, 500)
+    invalidateBulkCache()
     return data as BodyMetric
   },
 
@@ -53,6 +54,7 @@ export const progressService = {
     const { error, count } = await supabase.from('body_metrics').delete({ count: 'exact' }).eq('id', metricId)
     if (error) throw new ApiError(error.message, 500)
     if (!count) throw new ApiError('Entry not found.', 404)
+    invalidateBulkCache()
   },
 
   async getTrend(_userId: string, days = 90, endDate?: string): Promise<ProgressTrend> {

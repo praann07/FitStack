@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/Button'
 import { useAuthStore } from '@/stores/authStore'
 import { useAsync } from '@/hooks/useAsync'
 import { authService } from '@/services'
-import { relativeDays } from '@/lib/date'
 
 export function PendingApprovalPage() {
   const user = useAuthStore((s) => s.user)

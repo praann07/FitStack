@@ -15,15 +15,23 @@ export default defineConfig({
     port: 5173,
   },
   build: {
-    target: 'ES2020',
-    minify: 'terser',
+    // Vite 8 transpiles for browserslist-style targets; the legacy 'ES2020'
+    // value was rejected by lightningcss during CSS minification.
+    target: 'baseline-widely-available',
+    // Neither terser nor esbuild is installed; use rolldown's built-in minifier.
+    minify: 'oxc',
     rollupOptions: {
       output: {
-        manualChunks: {
-          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-          'vendor-supabase': ['@supabase/supabase-js'],
-          'vendor-ui': ['lucide-react', 'recharts'],
-          'vendor-date': ['date-fns', 'date-fns-tz'],
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('react-router-dom') || id.includes('react-dom') || id.includes('react/')) {
+              return 'vendor-react'
+            }
+            if (id.includes('@supabase')) return 'vendor-supabase'
+            if (id.includes('lucide-react') || id.includes('recharts')) return 'vendor-ui'
+            if (id.includes('date-fns')) return 'vendor-date'
+          }
+          return undefined
         },
       },
     },
