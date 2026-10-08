@@ -18,28 +18,46 @@ const CONTENT: Record<Kind, { subject: string; html: string }> = {
   },
 }
 
+// supabase.functions.invoke() always sends a CORS preflight from the
+// browser; without these headers the browser blocks the response before
+// authService.ts ever sees it, regardless of what the function returns.
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+}
+
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  })
+}
+
 Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders })
+
   const authHeader = req.headers.get("Authorization")
   if (!authHeader) {
-    return new Response(JSON.stringify({ error: "Missing authorization" }), { status: 401 })
+    return json({ error: "Missing authorization" }, 401)
   }
 
   let kind: Kind
   try {
     const body = await req.json()
     if (body.kind !== "welcome" && body.kind !== "login") {
-      return new Response(JSON.stringify({ error: "Invalid kind" }), { status: 400 })
+      return json({ error: "Invalid kind" }, 400)
     }
     kind = body.kind
   } catch {
-    return new Response(JSON.stringify({ error: "Invalid body" }), { status: 400 })
+    return json({ error: "Invalid body" }, 400)
   }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
   const jwt = authHeader.replace("Bearer ", "")
   const { data: userData, error: userError } = await supabase.auth.getUser(jwt)
   if (userError || !userData.user?.email) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 })
+    return json({ error: "Unauthorized" }, 401)
   }
 
   const { subject, html } = CONTENT[kind]
@@ -59,8 +77,8 @@ Deno.serve(async (req: Request) => {
 
   if (!res.ok) {
     console.error("Resend send failed", res.status, await res.text())
-    return new Response(JSON.stringify({ error: "send failed" }), { status: 502 })
+    return json({ error: "send failed" }, 502)
   }
 
-  return new Response(JSON.stringify({ ok: true }), { status: 200 })
+  return json({ ok: true })
 })

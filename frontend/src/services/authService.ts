@@ -37,11 +37,20 @@ async function fetchProfile(userId: string): Promise<ProfileRow> {
   return data as ProfileRow
 }
 
-/** Fire-and-forget: a failed notification email must never block signup/login. */
-function sendAuthEmail(kind: 'welcome' | 'login'): void {
-  supabase.functions.invoke('send-auth-email', { body: { kind } }).catch((error) => {
-    console.error('send-auth-email failed', error)
-  })
+/**
+ * Fire-and-forget: a failed notification email must never block signup/login.
+ * Takes the access token explicitly rather than letting supabase-js pull it
+ * from the ambient session -- both call sites sign out immediately after
+ * calling this, and relying on the ambient session raced that signOut(),
+ * producing an intermittent 401 depending on exactly when the underlying
+ * fetch read the session vs. when it was cleared.
+ */
+function sendAuthEmail(kind: 'welcome' | 'login', accessToken: string): void {
+  supabase.functions
+    .invoke('send-auth-email', { body: { kind }, headers: { Authorization: `Bearer ${accessToken}` } })
+    .catch((error) => {
+      console.error('send-auth-email failed', error)
+    })
 }
 
 /**
@@ -118,7 +127,7 @@ export const authService = {
       .single()
     if (profileError) throw new ApiError(profileError.message, 500)
 
-    sendAuthEmail('welcome')
+    if (authData.session) sendAuthEmail('welcome', authData.session.access_token)
     const user = toUser(authData.user.email ?? payload.email, profile as ProfileRow)
     // The writes above need the session signUp() just created; drop it the
     // moment they're done so the account sits unverified until a code is
@@ -129,9 +138,9 @@ export const authService = {
 
   /** Checks the password, then closes the resulting session -- authStore sends the code and verifyLoginCode re-opens it once confirmed. */
   async login(email: string, password: string): Promise<void> {
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) throw new ApiError(error.message, error.status ?? 401)
-    sendAuthEmail('login')
+    if (data.session) sendAuthEmail('login', data.session.access_token)
     await supabase.auth.signOut()
   },
 
