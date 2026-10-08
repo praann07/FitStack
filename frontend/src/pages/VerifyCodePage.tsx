@@ -89,7 +89,8 @@ export function VerifyCodePage() {
       <div className="animate-scale-in rounded-2xl border border-line bg-surface p-6 text-center shadow-[var(--shadow-pop)] sm:p-7">
         <h1 className="text-xl font-bold tracking-tight text-ink">Check your email</h1>
         <p className="mt-2 text-[13.5px] leading-relaxed text-ink-muted">
-          We sent a 6-digit code{pendingEmail ? ` to ${pendingEmail}` : ''}. It expires in 10 minutes.
+          We sent an email{pendingEmail ? ` to ${pendingEmail}` : ''}. Enter the 6-digit code from it below,
+          or just tap the sign-in link in that email if that's what it shows instead.
         </p>
 
         {error && (

@@ -46,17 +46,40 @@ function statusFor(user: User): AuthStatus {
 }
 
 export const useAuthStore = create<AuthState>((set, get) => {
-  // login()/register() close the password-only session with signOut() before
-  // the code is verified (see authService) -- that fires the same SIGNED_OUT
-  // event logout() does, so this listener must not stomp the
-  // pending_verification state those two are about to set. Suppressed only
-  // for the duration of that internal signOut call.
-  let suppressSignOutEvent = false
+  // login()/register() briefly open then close a password-only session
+  // (see authService) before the code is verified -- that fires the same
+  // SIGNED_IN/SIGNED_OUT events logout()/verifyCode() do, so this listener
+  // must not act on either while that internal open-then-close is in
+  // flight. Suppressed only for the duration of that window.
+  let suppressAuthEvents = false
+
+  /**
+   * Supabase's own email sends a clickable sign-in link alongside (or
+   * instead of, depending on the active template) the 6-digit code --
+   * `signInWithOtp` is a magic-link primitive underneath. Clicking it opens
+   * a session the same way verifyCode() does, just without going through
+   * this app's /verify form at all. SIGNED_IN here catches that path so the
+   * store ends up in the right state either way.
+   */
+  async function syncFromLiveSession(): Promise<void> {
+    try {
+      const session = await authService.restore()
+      if (!session) return
+      writePendingEmail(null)
+      set({ status: statusFor(session.user), user: session.user, pendingEmail: null, codeSentAt: null })
+    } catch {
+      // Leave current state alone -- a transient profile-fetch failure here
+      // shouldn't knock a possibly-fine session back to anonymous.
+    }
+  }
 
   supabase.auth.onAuthStateChange((event) => {
-    if (event === 'SIGNED_OUT' && !suppressSignOutEvent) {
+    if (suppressAuthEvents) return
+    if (event === 'SIGNED_OUT') {
       writePendingEmail(null)
       set({ status: 'anonymous', user: null, pendingEmail: null, codeSentAt: null })
+    } else if (event === 'SIGNED_IN') {
+      void syncFromLiveSession()
     }
   })
 
@@ -105,11 +128,11 @@ export const useAuthStore = create<AuthState>((set, get) => {
 
     /** Signup always lands on verification -- creating the account proves nothing yet. */
     async register(payload) {
-      suppressSignOutEvent = true
+      suppressAuthEvents = true
       try {
         await authService.signUp(payload)
       } finally {
-        suppressSignOutEvent = false
+        suppressAuthEvents = false
       }
       enterPendingVerification(payload.email)
       await trySend(payload.email)
@@ -117,11 +140,11 @@ export const useAuthStore = create<AuthState>((set, get) => {
 
     /** Password is the first factor only; the session stays closed until verifyCode(). */
     async login(email, password) {
-      suppressSignOutEvent = true
+      suppressAuthEvents = true
       try {
         await authService.login(email, password)
       } finally {
-        suppressSignOutEvent = false
+        suppressAuthEvents = false
       }
       enterPendingVerification(email)
       await trySend(email)

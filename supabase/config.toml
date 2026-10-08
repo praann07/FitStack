@@ -243,17 +243,23 @@ secure_password_change = false
 # Number of characters used in the email OTP. Must push this -- the remote
 # project is currently set to 8, but VerifyCodePage.tsx only accepts 6 digits.
 otp_length = 6
-# Number of seconds before the email OTP expires (defaults to 1 hour).
-otp_expiry = 3600
+# Number of seconds before the email OTP expires. Was left at the 1-hour
+# default, which didn't match what magic_link.html tells the user ("expires
+# in 10 minutes") and left a wider brute-force window than necessary.
+otp_expiry = 600
 
 # Production SMTP via Resend -- would remove the default mailer's strict
-# rate limit. DISABLED for now: Resend logs confirm `weighsfit.in` is not
-# actually verified yet ("550 The weighsfit.in domain is not verified"),
-# so sending through it fails outright. Falling back to Supabase's built-in
-# mailer below, which still uses the magic_link template customized further
-# down (that's a GoTrue-level setting, independent of which mailer sends).
-# Flip `enabled` back to true once weighsfit.in is verified at
-# https://resend.com/domains -- everything else here is already correct.
+# rate limit AND is required for the custom magic_link template below to
+# take effect (confirmed the hard way: the Management API accepted a
+# template push while this was briefly `true`, but silently reverted it to
+# Supabase's own default once `enabled` went back to `false` -- "Email
+# template modification is not available for free tier projects using the
+# default email provider" is the real error when you try to push a template
+# change while this is off). DISABLED for now because `weighsfit.in` isn't
+# actually verified in Resend yet ("550 The weighsfit.in domain is not
+# verified" in the auth logs). Flip `enabled` back to true, then uncomment
+# the template block below and re-push, once the domain is verified at
+# https://resend.com/domains.
 # RESEND_SMTP_PASS must be set as an env var (or in a local, untracked .env
 # file) before running `supabase config push` -- never hardcode the key here.
 [auth.email.smtp]
@@ -266,11 +272,14 @@ admin_email = "otp@weighsfit.in"
 sender_name = "FitStack"
 
 # Shows the 6-digit code ({{ .Token }}) from signInWithOtp/verifyOtp -- see
-# frontend/src/services/authService.ts. The default template only shows a
-# clickable link, which this app's /verify screen never uses.
-[auth.email.template.magic_link]
-subject = "Your FitStack verification code"
-content_path = "./supabase/templates/magic_link.html"
+# frontend/src/services/authService.ts. Left declared-but-commented: pushing
+# this while smtp.enabled = false fails outright (see above), and failing to
+# push it fails the ENTIRE config push, including unrelated fields. Until
+# the domain is verified, the default template's own sign-in link is what
+# actually ships -- VerifyCodePage.tsx's copy accounts for that.
+# [auth.email.template.magic_link]
+# subject = "Your FitStack verification code"
+# content_path = "./supabase/templates/magic_link.html"
 
 # Uncomment to customize email template
 # [auth.email.template.invite]
