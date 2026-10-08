@@ -410,11 +410,12 @@ export interface AuthSession {
 }
 
 /**
- * Collected on the single combined signup form (pilot-stage: password auth,
- * not OTP). Everything needed to create the auth identity and seed the first
- * body_metrics row and a Mifflin-St Jeor baseline nutrition_targets row --
- * four sequential client writes (see authService.signUp). The resulting
- * account starts unapproved; an admin flips profiles.approved manually.
+ * Collected on the single combined signup form. Everything needed to create
+ * the auth identity and seed the first body_metrics row and a Mifflin-St
+ * Jeor baseline nutrition_targets row -- four sequential client writes (see
+ * authService.signUp), followed by an emailed OTP step before the account is
+ * usable at all. The resulting account also starts unapproved; an admin
+ * flips profiles.approved manually.
  */
 export interface RegisterPayload {
   email: string

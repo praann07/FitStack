@@ -6,6 +6,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { LoginPage } from '@/pages/LoginPage'
 import { RegisterPage } from '@/pages/RegisterPage'
 import { PendingApprovalPage } from '@/pages/PendingApprovalPage'
+import { VerifyCodePage } from '@/pages/VerifyCodePage'
 import { useAuthStore } from '@/stores/authStore'
 
 const DashboardPage = lazy(() => import('@/pages/DashboardPage').then((m) => ({ default: m.DashboardPage })))
@@ -36,6 +37,7 @@ export default function App() {
         <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+        <Route path="/verify" element={<RequireVerification />} />
         <Route path="/pending-approval" element={<RequirePendingApproval />} />
 
         <Route
@@ -78,11 +80,21 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   const location = useLocation()
 
   if (status === 'restoring') return <SplashScreen />
+  if (status === 'pending_verification') return <Navigate to="/verify" replace />
   if (status === 'pending_approval') return <Navigate to="/pending-approval" replace />
   if (status !== 'authenticated') {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />
   }
   return <>{children}</>
+}
+
+function RequireVerification() {
+  const status = useAuthStore((s) => s.status)
+
+  if (status === 'restoring') return <SplashScreen />
+  if (status === 'pending_verification') return <VerifyCodePage />
+  if (status === 'anonymous') return <Navigate to="/login" replace />
+  return <Navigate to="/dashboard" replace />
 }
 
 function RequireAdmin({ children }: { children: React.ReactNode }) {
@@ -91,9 +103,11 @@ function RequireAdmin({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
-function RequirePendingApproval() {  const status = useAuthStore((s) => s.status)
+function RequirePendingApproval() {
+  const status = useAuthStore((s) => s.status)
 
   if (status === 'restoring') return <SplashScreen />
+  if (status === 'pending_verification') return <Navigate to="/verify" replace />
   if (status === 'anonymous') return <Navigate to="/login" replace />
   if (status === 'authenticated') return <Navigate to="/dashboard" replace />
   return <PendingApprovalPage />

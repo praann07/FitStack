@@ -97,8 +97,7 @@ export function RegisterPage() {
         sex,
         activity_level: activity,
       })
-      const status = useAuthStore.getState().status
-      navigate(status === 'pending_approval' ? '/pending-approval' : '/dashboard', { replace: true })
+      navigate('/verify', { replace: true })
     } catch (err) {
       setFormError(errorMessage(err))
     } finally {
@@ -121,8 +120,8 @@ export function RegisterPage() {
         <h1 className="text-xl font-bold tracking-tight text-ink">Create your account</h1>
         <p className="mt-1 text-[13.5px] text-ink-muted">
           One account for training, nutrition and progress. Only an email and password are required to start —
-          fill in body metrics and goals later if you'd like (defaults are provided). New accounts need approval
-          before they can log in — you'll get access once that's done.
+          fill in body metrics and goals later if you'd like (defaults are provided). We'll email you a 6-digit
+          code to confirm it's you, and new accounts need approval before they can log in.
         </p>
 
         {formError && (

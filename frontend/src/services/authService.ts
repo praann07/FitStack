@@ -37,23 +37,36 @@ async function fetchProfile(userId: string): Promise<ProfileRow> {
   return data as ProfileRow
 }
 
+/** Fire-and-forget: a failed notification email must never block signup/login. */
+function sendAuthEmail(kind: 'welcome' | 'login'): void {
+  supabase.functions.invoke('send-auth-email', { body: { kind } }).catch((error) => {
+    console.error('send-auth-email failed', error)
+  })
+}
+
 /**
- * Auth service (pilot stage: email + password, not OTP -- see
- * supabase/migrations/0007_approval_gate.sql). A `profiles` row is
- * stub-created server-side the moment `auth.users` gets a new row;
+ * Auth service. Password + a 6-digit email code (Supabase's own OTP mailer,
+ * `signInWithOtp`/`verifyOtp`) gates both signup and login -- see
+ * `sendLoginCode`/`verifyLoginCode` below. Underneath that, a `profiles` row
+ * is stub-created server-side the moment `auth.users` gets a new row;
  * `approved` stays false until an admin flips it manually in the Supabase
- * dashboard, which the app treats as a distinct auth status (see
- * stores/authStore.ts) rather than routing straight to the dashboard. RLS
- * enforces this on every table besides `profiles` itself, so this is a UX
- * gate, not the actual security boundary.
+ * dashboard (see supabase/migrations/0007_approval_gate.sql), which the app
+ * treats as a distinct auth status (see stores/authStore.ts) rather than
+ * routing straight to the dashboard. RLS enforces that on every table besides
+ * `profiles` itself, so approval is a UX gate, not the actual security
+ * boundary -- and neither, really, is the OTP step: the password sign-in
+ * already yields a valid session, which this service closes with
+ * `signOut()` immediately so the browser never holds an unverified session
+ * past the moment it was created.
  */
 export const authService = {
   /**
-   * Signs up and completes the profile in one step (no separate onboarding
-   * screen -- there's no OTP gap to bridge anymore): writes the profile
-   * fields, seeds today's body_metrics entry, and computes + stores a
-   * Mifflin-St Jeor baseline nutrition_targets row, the same three writes
-   * the original /auth/register endpoint did in one transaction.
+   * Signs up and completes the profile in one step, using the session
+   * signUp() itself returns: writes the profile fields, seeds today's
+   * body_metrics entry, and computes + stores a Mifflin-St Jeor baseline
+   * nutrition_targets row, the same three writes the original
+   * /auth/register endpoint did in one transaction. The OTP gap comes after
+   * all of that, not before -- see the signOut() at the end of this method.
    */
   async signUp(payload: RegisterPayload): Promise<AuthSession> {
     const { data: authData, error: authError } = await supabase.auth.signUp({
@@ -105,12 +118,34 @@ export const authService = {
       .single()
     if (profileError) throw new ApiError(profileError.message, 500)
 
-    return { user: toUser(authData.user.email ?? payload.email, profile as ProfileRow) }
+    sendAuthEmail('welcome')
+    const user = toUser(authData.user.email ?? payload.email, profile as ProfileRow)
+    // The writes above need the session signUp() just created; drop it the
+    // moment they're done so the account sits unverified until a code is
+    // confirmed (authStore sends it, same as login()).
+    await supabase.auth.signOut()
+    return { user }
   },
 
-  async login(email: string, password: string): Promise<AuthSession> {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+  /** Checks the password, then closes the resulting session -- authStore sends the code and verifyLoginCode re-opens it once confirmed. */
+  async login(email: string, password: string): Promise<void> {
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) throw new ApiError(error.message, error.status ?? 401)
+    sendAuthEmail('login')
+    await supabase.auth.signOut()
+  },
+
+  /** Emails a fresh 6-digit code via Supabase's own OTP mailer. Never creates a new account -- the password step already did that. */
+  async sendLoginCode(email: string): Promise<void> {
+    const { error } = await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: false } })
+    if (error) throw new ApiError(error.message, error.status ?? 500)
+  },
+
+  /** Verifies the code and, on success, establishes the real session. */
+  async verifyLoginCode(email: string, code: string): Promise<AuthSession> {
+    const { data, error } = await supabase.auth.verifyOtp({ email, token: code, type: 'email' })
+    if (error) throw new ApiError(error.message, error.status ?? 400)
+    if (!data.user) throw new ApiError('Verification succeeded but no account was returned.', 500)
     const profile = await fetchProfile(data.user.id)
     return { user: toUser(data.user.email ?? email, profile) }
   },

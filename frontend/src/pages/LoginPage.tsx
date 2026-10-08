@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { AuthLayout } from '@/components/layout/AuthLayout'
 import { Button } from '@/components/ui/Button'
 import { Field, Input } from '@/components/ui/Field'
@@ -10,14 +10,11 @@ import { errorMessage } from '@/hooks/useAsync'
 export function LoginPage() {
   const login = useAuthStore((s) => s.login)
   const navigate = useNavigate()
-  const location = useLocation()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({})
   const [formError, setFormError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-
-  const from = (location.state as { from?: string } | null)?.from ?? '/dashboard'
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -32,8 +29,7 @@ export function LoginPage() {
     setFormError(null)
     try {
       await login(email, password)
-      const status = useAuthStore.getState().status
-      navigate(status === 'pending_approval' ? '/pending-approval' : from, { replace: true })
+      navigate('/verify', { replace: true })
     } catch (err) {
       setFormError(errorMessage(err))
     } finally {
