@@ -9,6 +9,10 @@ if (!url || !anonKey) {
 
 export const supabase = createClient(url, anonKey)
 
+/** For the rare caller (authService's fire-and-forget notification email) that needs a raw fetch to an Edge Function instead of supabase.functions.invoke(), whose own Authorization header always wins over a custom one passed to it. */
+export const supabaseUrl = url
+export const supabaseAnonKey = anonKey
+
 /** The current signed-in user's id, for rows that need it explicitly on insert (RLS verifies it, but can't fill it in). */
 export async function currentUserId(): Promise<string> {
   const { data, error } = await supabase.auth.getUser()

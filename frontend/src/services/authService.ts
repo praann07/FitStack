@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase'
+import { supabase, supabaseAnonKey, supabaseUrl } from '@/lib/supabase'
 import { macrosFromCalories, mifflinStJeor, targetCaloriesFor } from '@/lib/adaptive'
 import { today } from '@/lib/date'
 import type { AuthSession, Goal, RegisterPayload, User } from '@/types'
@@ -39,18 +39,28 @@ async function fetchProfile(userId: string): Promise<ProfileRow> {
 
 /**
  * Fire-and-forget: a failed notification email must never block signup/login.
- * Takes the access token explicitly rather than letting supabase-js pull it
- * from the ambient session -- both call sites sign out immediately after
- * calling this, and relying on the ambient session raced that signOut(),
- * producing an intermittent 401 depending on exactly when the underlying
- * fetch read the session vs. when it was cleared.
+ * Uses a raw fetch, not supabase.functions.invoke() -- invoke() always
+ * re-derives its own Authorization header from the client's *current*
+ * ambient session at request-send time, overwriting any custom header
+ * passed in its `headers` option (confirmed live: passing one through
+ * invoke() still 401'd). Both call sites sign out on the very next line
+ * after calling this, so by the time that overwrite happened, the ambient
+ * session was already gone. A raw fetch with the token captured synchronously
+ * from the already-resolved signUp()/signInWithPassword() response sidesteps
+ * that entirely.
  */
 function sendAuthEmail(kind: 'welcome' | 'login', accessToken: string): void {
-  supabase.functions
-    .invoke('send-auth-email', { body: { kind }, headers: { Authorization: `Bearer ${accessToken}` } })
-    .catch((error) => {
-      console.error('send-auth-email failed', error)
-    })
+  fetch(`${supabaseUrl}/functions/v1/send-auth-email`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: supabaseAnonKey,
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ kind }),
+  }).catch((error) => {
+    console.error('send-auth-email failed', error)
+  })
 }
 
 /**
