@@ -38,29 +38,31 @@ async function fetchProfile(userId: string): Promise<ProfileRow> {
 }
 
 /**
- * Fire-and-forget: a failed notification email must never block signup/login.
- * Uses a raw fetch, not supabase.functions.invoke() -- invoke() always
- * re-derives its own Authorization header from the client's *current*
- * ambient session at request-send time, overwriting any custom header
- * passed in its `headers` option (confirmed live: passing one through
- * invoke() still 401'd). Both call sites sign out on the very next line
- * after calling this, so by the time that overwrite happened, the ambient
- * session was already gone. A raw fetch with the token captured synchronously
- * from the already-resolved signUp()/signInWithPassword() response sidesteps
- * that entirely.
+ * A failed notification email must never block signup/login -- every error
+ * here is swallowed, never thrown. But it must be *awaited* by its callers
+ * before they call signOut(): supabase.auth.signOut() revokes the session
+ * server-side, and that revocation request races this one over the network
+ * with no ordering guarantee -- neither a captured-token raw fetch nor an
+ * explicit Authorization header through supabase.functions.invoke() made
+ * any difference (both still 401'd in live testing), because the problem
+ * was never which header this request carried, only whether it reached the
+ * server before signOut()'s did. Awaiting this -- not its result, just its
+ * completion -- is what actually fixes that.
  */
-function sendAuthEmail(kind: 'welcome' | 'login', accessToken: string): void {
-  fetch(`${supabaseUrl}/functions/v1/send-auth-email`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      apikey: supabaseAnonKey,
-      Authorization: `Bearer ${accessToken}`,
-    },
-    body: JSON.stringify({ kind }),
-  }).catch((error) => {
+async function sendAuthEmail(kind: 'welcome' | 'login', accessToken: string): Promise<void> {
+  try {
+    await fetch(`${supabaseUrl}/functions/v1/send-auth-email`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ kind }),
+    })
+  } catch (error) {
     console.error('send-auth-email failed', error)
-  })
+  }
 }
 
 /**
@@ -137,7 +139,7 @@ export const authService = {
       .single()
     if (profileError) throw new ApiError(profileError.message, 500)
 
-    if (authData.session) sendAuthEmail('welcome', authData.session.access_token)
+    if (authData.session) await sendAuthEmail('welcome', authData.session.access_token)
     const user = toUser(authData.user.email ?? payload.email, profile as ProfileRow)
     // The writes above need the session signUp() just created; drop it the
     // moment they're done so the account sits unverified until a code is
@@ -150,7 +152,7 @@ export const authService = {
   async login(email: string, password: string): Promise<void> {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) throw new ApiError(error.message, error.status ?? 401)
-    if (data.session) sendAuthEmail('login', data.session.access_token)
+    if (data.session) await sendAuthEmail('login', data.session.access_token)
     await supabase.auth.signOut()
   },
 
